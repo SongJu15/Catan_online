@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Socket Test</title>
+</head>
+<body>
+  <h3>Socket.IO 测试页</h3>
+  <p>打开控制台按说明操作</p>
+
+  <script src="https://cdn.socket.io/4.8.3/socket.io.min.js"></script>
+  <script>
+    const socket = io("http://localhost:3001");
+
+    socket.on("connect", () => {
+      console.log("connected:", socket.id);
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("disconnect:", reason);
+    });
+
+    socket.on("STATE_SYNC", (data) => {
+      console.log("STATE_SYNC =>", data);
+    });
+
+    socket.on("ROOM_ERROR", (err) => {
+      console.log("ROOM_ERROR =>", err);
+    });
+
+    // 给你几个快捷函数，直接在控制台调用
+    window.createRoom = (name) => socket.emit("ROOM_CREATE", { name });
+    window.joinRoom = (roomId, name) => socket.emit("ROOM_JOIN", { roomId, name });
+  </script>
+</body>
+</html>
