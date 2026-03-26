@@ -1,103 +1,117 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import socket from '../socket'
-import { ROOM_CREATE, ROOM_JOIN, STATE_SYNC, ROOM_ERROR } from '@catan/shared'
-import type { StateSyncPayload, RoomErrorPayload } from '@catan/shared'
+import { ROOM_CREATE, ROOM_JOIN } from '@catan/shared'
+import type { RoomCreateReq, RoomJoinReq, StateSyncPayload } from '@catan/shared'
 
 export default function HomePage() {
   const navigate = useNavigate()
-  const [name, setName] = useState('')
+  const [playerName, setPlayerName] = useState('')
   const [roomId, setRoomId] = useState('')
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
 
-  function handleCreate() {
-    if (!name.trim()) return setError('请输入你的名字')
-    setError('')
-    setLoading(true)
+  function handleCreateRoom() {
+    if (!playerName.trim()) {
+      setError('请输入玩家名称')
+      return
+    }
 
-    socket.connect()
-
-    socket.once(STATE_SYNC, (payload: StateSyncPayload) => {
-      setLoading(false)
-      navigate(`/room/${payload.roomId}`, { state: payload })
+    const payload: RoomCreateReq = { name: playerName.trim() }
+    socket.emit(ROOM_CREATE, payload, (response: StateSyncPayload) => {
+      navigate(/room/+response.state.roomId, { state: response })
     })
-
-    socket.once(ROOM_ERROR, (payload: RoomErrorPayload) => {
-      setLoading(false)
-      setError(payload.message)
-    })
-
-    socket.emit(ROOM_CREATE, { name: name.trim() })
   }
 
-  function handleJoin() {
-    if (!name.trim()) return setError('请输入你的名字')
-    if (!roomId.trim()) return setError('请输入房间号')
-    setError('')
-    setLoading(true)
+  function handleJoinRoom() {
+    if (!playerName.trim()) {
+      setError('请输入玩家名称')
+      return
+    }
+    if (!roomId.trim()) {
+      setError('请输入房间号')
+      return
+    }
 
-    socket.connect()
+    const payload: RoomJoinReq = {
+      roomId: roomId.trim(),
+      name: playerName.trim()
+    }
 
-    socket.once(STATE_SYNC, (payload: StateSyncPayload) => {
-      setLoading(false)
-      navigate(`/room/${payload.roomId}`, { state: payload })
+    socket.emit(ROOM_JOIN, payload, (response: StateSyncPayload | { error: string }) => {
+      if ('error' in response) {
+        setError(response.error)
+        setTimeout(() => setError(''), 3000)
+      } else {
+        navigate(/room/+roomId.trim(), { state: response })
+      }
     })
-
-    socket.once(ROOM_ERROR, (payload: RoomErrorPayload) => {
-      setLoading(false)
-      setError(payload.message)
-    })
-
-    socket.emit(ROOM_JOIN, { roomId: roomId.trim(), name: name.trim() })
   }
 
   return (
-    <div style={{ maxWidth: 400, margin: '100px auto', fontFamily: 'sans-serif' }}>
-      <h1>🏝️ 卡坦岛 Online</h1>
-
-      <div style={{ marginBottom: 16 }}>
-        <label>你的名字</label>
-        <br />
+    <div style={{ maxWidth: 400, margin: '100px auto', fontFamily: 'sans-serif', padding: 20 }}>
+      <h1 style={{ textAlign: 'center' }}>🏝️ 卡坦岛在线</h1>
+      
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>玩家名称</label>
         <input
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="输入名字"
-          style={{ width: '100%', padding: 8, marginTop: 4 }}
+          type="text"
+          value={playerName}
+          onChange={(e) => setPlayerName(e.target.value)}
+          placeholder="输入你的名字"
+          style={{ width: '100%', padding: 10, fontSize: 16, borderRadius: 4, border: '1px solid #ccc' }}
         />
       </div>
 
       <button
-        onClick={handleCreate}
-        disabled={loading}
-        style={{ width: '100%', padding: 10, marginBottom: 12, cursor: 'pointer' }}
+        onClick={handleCreateRoom}
+        style={{
+          width: '100%',
+          padding: 12,
+          fontSize: 16,
+          background: '#28a745',
+          color: 'white',
+          border: 'none',
+          borderRadius: 4,
+          cursor: 'pointer',
+          marginBottom: 20
+        }}
       >
-        {loading ? '连接中...' : '🆕 创建房间'}
+        🎮 创建房间
       </button>
 
-      <hr />
+      <hr style={{ margin: '30px 0' }} />
 
-      <div style={{ marginTop: 12, marginBottom: 8 }}>
-        <label>房间号</label>
-        <br />
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>房间号</label>
         <input
+          type="text"
           value={roomId}
-          onChange={e => setRoomId(e.target.value)}
+          onChange={(e) => setRoomId(e.target.value)}
           placeholder="输入房间号"
-          style={{ width: '100%', padding: 8, marginTop: 4 }}
+          style={{ width: '100%', padding: 10, fontSize: 16, borderRadius: 4, border: '1px solid #ccc' }}
         />
       </div>
 
       <button
-        onClick={handleJoin}
-        disabled={loading}
-        style={{ width: '100%', padding: 10, cursor: 'pointer' }}
+        onClick={handleJoinRoom}
+        style={{
+          width: '100%',
+          padding: 12,
+          fontSize: 16,
+          background: '#007bff',
+          color: 'white',
+          border: 'none',
+          borderRadius: 4,
+          cursor: 'pointer'
+        }}
       >
-        {loading ? '连接中...' : '🚪 加入房间'}
+        🚪 加入房间
       </button>
 
       {error && (
-        <p style={{ color: 'red', marginTop: 12 }}>{error}</p>
+        <div style={{ marginTop: 20, padding: 10, background: '#f8d7da', color: '#721c24', borderRadius: 4 }}>
+          ⚠️ {error}
+        </div>
       )}
     </div>
   )
