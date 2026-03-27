@@ -26,58 +26,29 @@ import type {
   BuyDevCardReq, PlayDevCardReq,
   BankTradeReq, MoveRobberReq, DiscardReq,
 } from "@catan/shared";
+import {
+  ACTION_TRADE_OFFER,
+  ACTION_TRADE_ACCEPT,
+  ACTION_TRADE_REJECT,
+  ACTION_TRADE_CONFIRM,
+  ACTION_TRADE_CANCEL,
+  type TradeOfferReq,
+  type TradeAcceptReq,
+  type TradeRejectReq,
+  type TradeConfirmReq,
+  type TradeCancelReq,
+} from "@catan/shared";
 
-// ============================================================
-// 服务端内部玩家结构
-// ============================================================
-interface ServerPlayer {
-  playerId: string;
-  socketId: string;
-  name: string;
-  color: string;
-  isReady: boolean;
-  resources: PlayerResources;
-  // 发展卡手牌
-  devCards: DevCard[];
-  // 已打出的骑士数
-  knightsPlayed: number;
-  // 称号
-  hasLargestArmy: boolean;
-  hasLongestRoad: boolean;
-  // 建筑数量
-  settlements: number;
-  cities: number;
-  roads: number;
-}
+import {
+  handleTradeOffer,
+  handleTradeAccept,
+  handleTradeReject,
+  handleTradeConfirm,
+  handleTradeCancel,
+} from "./trade";
 
-// ============================================================
-// 服务端内部房间结构
-// ============================================================
-interface ServerRoom {
-  roomId: string;
-  hostPlayerId: string;
-  phase: GameState["phase"];
-  players: ServerPlayer[];
-  board: Board | null;
-  setupInfo: SetupInfo | null;
-  diceResult: [number, number] | null;
-  hasRolled: boolean;
-  winner: string | null;
-  // 强盗
-  robberInfo: RobberInfo | null;
-  robberHexId: string | null;
-  // 发展卡牌堆
-  devCardDeck: DevCardType[];
-  // 道路建设卡状态
-  roadBuildingInfo: RoadBuildingInfo | null;
-  // 丰收年 / 垄断 待处理
-  yearOfPlentyPending: boolean;
-  monopolyPending: boolean;
-  // 回合号
-  turnNumber: number;
-  // 当前玩家索引
-  currentPlayerIndex: number;
-}
+import type { ServerRoom, ServerPlayer } from "./types";
+
 
 // ============================================================
 // 全局房间 Map
@@ -134,6 +105,7 @@ function buildSummary(p: ServerPlayer): PlayerSummary {
     hasLargestArmy: p.hasLargestArmy,
     hasLongestRoad: p.hasLongestRoad,
     devCardCount: p.devCards.length,
+    isOnline: p.isOnline,
   };
 }
 
@@ -169,6 +141,7 @@ function buildGameState(room: ServerRoom): GameState {
     yearOfPlentyPending: room.yearOfPlentyPending,
     monopolyPending: room.monopolyPending,
     turnNumber: room.turnNumber,
+    tradeOffer: room.tradeOffer,
   };
 }
 
@@ -183,6 +156,40 @@ function broadcastState(io: Server, room: ServerRoom) {
     io.to(p.socketId).emit(STATE_SYNC, payload);
   }
 }
+
+// ============================================================
+// 计算某玩家对某资源的真实交易比率
+// 优先级：2:1专属港 > 3:1通用港 > 4:1默认
+// ============================================================
+function calcTradeRate(
+  playerId: string,
+  resource: ResourceType,
+  board: Board
+): number {
+  let best = 4;
+
+  for (const port of board.ports) {
+    // 检查该港口的两个顶点，玩家是否在其中任意一个上有建筑
+    const hasBuilding = port.vertexIds.some(vId => {
+      const vertex = board.vertices.find(v => v.id === vId);
+      return vertex?.ownerPlayerId === playerId;
+    });
+
+    if (!hasBuilding) continue;
+
+    if (port.type === "any") {
+      // 3:1 通用港
+      best = Math.min(best, 3);
+    } else if (port.type === resource) {
+      // 2:1 专属港，直接返回最优
+      return 2;
+    }
+  }
+
+  return best;
+}
+
+
 
 // ============================================================
 // 发送错误给单个 socket
@@ -203,15 +210,15 @@ function calcLongestRoad(playerId: string, board: Board): number {
   for (const e of edges) {
     // 检查两端顶点是否被其他玩家的建筑阻断
     const vFrom = board.vertices.find(v => v.id === e.fromVertexId)!;
-    const vTo   = board.vertices.find(v => v.id === e.toVertexId)!;
+    const vTo = board.vertices.find(v => v.id === e.toVertexId)!;
     // 如果顶点有建筑且不是自己的，则该顶点阻断道路
     const fromBlocked = !!vFrom.ownerPlayerId && vFrom.ownerPlayerId !== playerId;
-    const toBlocked   = !!vTo.ownerPlayerId   && vTo.ownerPlayerId   !== playerId;
+    const toBlocked = !!vTo.ownerPlayerId && vTo.ownerPlayerId !== playerId;
 
     if (!adj.has(e.fromVertexId)) adj.set(e.fromVertexId, new Set());
-    if (!adj.has(e.toVertexId))   adj.set(e.toVertexId,   new Set());
+    if (!adj.has(e.toVertexId)) adj.set(e.toVertexId, new Set());
     if (!fromBlocked) adj.get(e.fromVertexId)!.add(e.toVertexId);
-    if (!toBlocked)   adj.get(e.toVertexId)!.add(e.fromVertexId);
+    if (!toBlocked) adj.get(e.toVertexId)!.add(e.fromVertexId);
   }
 
   // DFS 求最长路径（允许重复顶点但不允许重复边）
@@ -406,19 +413,19 @@ function isValidRoadPlacement(
 
   // playing 阶段：必须连接到自己的建筑或道路
   const vFrom = board.vertices.find(v => v.id === edge.fromVertexId)!;
-  const vTo   = board.vertices.find(v => v.id === edge.toVertexId)!;
+  const vTo = board.vertices.find(v => v.id === edge.toVertexId)!;
 
   const connectedToBuilding =
     (vFrom.ownerPlayerId === playerId) ||
-    (vTo.ownerPlayerId   === playerId);
+    (vTo.ownerPlayerId === playerId);
 
   const connectedToRoad = board.edges.some(e => {
     if (e.id === edgeId || e.ownerPlayerId !== playerId) return false;
     return (
       e.fromVertexId === edge.fromVertexId ||
-      e.fromVertexId === edge.toVertexId   ||
-      e.toVertexId   === edge.fromVertexId ||
-      e.toVertexId   === edge.toVertexId
+      e.fromVertexId === edge.toVertexId ||
+      e.toVertexId === edge.fromVertexId ||
+      e.toVertexId === edge.toVertexId
     );
   });
 
@@ -519,6 +526,7 @@ io.on("connection", (socket: Socket) => {
       settlements: 0,
       cities: 0,
       roads: 0,
+      isOnline: true,
     };
     const room: ServerRoom = {
       roomId,
@@ -538,12 +546,13 @@ io.on("connection", (socket: Socket) => {
       monopolyPending: false,
       turnNumber: 0,
       currentPlayerIndex: 0,
+      tradeOffer: null,
     };
     rooms.set(roomId, room);
     socket.join(roomId);
 
     const state = buildGameState(room);
-    const you   = buildPrivate(player);
+    const you = buildPrivate(player);
     const resp: StateSyncPayload = { roomId, you, state };
     callback(resp);
   });
@@ -554,6 +563,8 @@ io.on("connection", (socket: Socket) => {
   socket.on(ROOM_JOIN, (payload: RoomJoinReq, callback) => {
     const room = rooms.get(payload.roomId);
     if (!room) { callback({ error: "房间不存在" }); return; }
+    // ✅ 修复：游戏已开始时，检查是否是老玩家重连
+    if (room.phase !== "lobby") { callback({ error: "游戏已开始" }); return; }
     if (room.phase !== "lobby") { callback({ error: "游戏已开始" }); return; }
     if (room.players.length >= 6) { callback({ error: "房间已满" }); return; }
 
@@ -572,6 +583,7 @@ io.on("connection", (socket: Socket) => {
       settlements: 0,
       cities: 0,
       roads: 0,
+      isOnline: true,
     };
     room.players.push(player);
     socket.join(payload.roomId);
@@ -579,7 +591,7 @@ io.on("connection", (socket: Socket) => {
     broadcastState(io, room);
 
     const state = buildGameState(room);
-    const you   = buildPrivate(player);
+    const you = buildPrivate(player);
     callback({ roomId: payload.roomId, you, state });
   });
 
@@ -1050,31 +1062,35 @@ io.on("connection", (socket: Socket) => {
   // playing：银行交易（4:1）
   // ----------------------------------------------------------
   socket.on(ACTION_BANK_TRADE, (payload: BankTradeReq) => {
-    const room = rooms.get(payload.roomId);
-    if (!room) return;
-    const player = room.players.find(p => p.socketId === socket.id);
-    if (!player) return;
-    if (player.playerId !== room.players[room.currentPlayerIndex].playerId) {
-      sendError(socket, "还没到你的回合"); return;
-    }
-    if (room.phase !== "playing") { sendError(socket, "当前不是游戏阶段"); return; }
-    if (!room.hasRolled) { sendError(socket, "请先掷骰子"); return; }
-    if (room.robberInfo) { sendError(socket, "请先处理强盗"); return; }
-    if (payload.give === payload.receive) {
-      sendError(socket, "给出和换取的资源不能相同"); return;
-    }
+  const room = rooms.get(payload.roomId);
+  if (!room || !room.board) return;
+  const player = room.players.find(p => p.socketId === socket.id);
+  if (!player) return;
+  if (player.playerId !== room.players[room.currentPlayerIndex].playerId) {
+    sendError(socket, "还没到你的回合"); return;
+  }
+  if (room.phase !== "playing")  { sendError(socket, "当前不是游戏阶段"); return; }
+  if (!room.hasRolled)           { sendError(socket, "请先掷骰子"); return; }
+  if (room.robberInfo)           { sendError(socket, "请先处理强盗"); return; }
+  if (payload.give === payload.receive) {
+    sendError(socket, "给出和换取的资源不能相同"); return;
+  }
 
-    const cost = emptyResources();
-    cost[payload.give] = 4;
-    if (!hasEnoughResources(player.resources, cost)) {
-      sendError(socket, `需要4张 ${payload.give} 才能进行银行交易`); return;
-    }
+  // ── 服务端自己计算真实 rate，不信任前端 ──────────────────
+  const serverRate = calcTradeRate(player.playerId, payload.give, room.board);
 
-    player.resources[payload.give]    -= 4;
-    player.resources[payload.receive] += 1;
+  const cost = emptyResources();
+  cost[payload.give] = serverRate;
+  if (!hasEnoughResources(player.resources, cost)) {
+    sendError(socket, `需要 ${serverRate} 张 ${payload.give} 才能进行交易`); return;
+  }
 
-    broadcastState(io, room);
-  });
+  player.resources[payload.give] -= serverRate;
+  player.resources[payload.receive] += 1;
+
+  broadcastState(io, room);
+});
+
 
   // ----------------------------------------------------------
   // playing：结束回合
@@ -1097,33 +1113,221 @@ io.on("connection", (socket: Socket) => {
     room.hasRolled = false;
     room.diceResult = null;
     room.turnNumber += 1;
+    room.tradeOffer = null;   // ← 加这一行，清空未完成的交易
 
     broadcastState(io, room);
   });
 
+  // ================================================================
+  // 玩家交易事件
+  // 流程：发起方 offer → 其他玩家 accept/reject → 发起方 confirm/cancel
+  // ================================================================
+
+  // 工具：把 ServerPlayer[] 转成 privates Map（供 trade.ts 使用）
+  function buildPrivatesMap(players: ServerPlayer[]): Map<string, PlayerPrivate> {
+    const map = new Map<string, PlayerPrivate>();
+    for (const p of players) {
+      map.set(p.playerId, {
+        playerId: p.playerId,
+        resources: { ...p.resources },
+        devCards: p.devCards.map(c => ({ ...c })),
+      });
+    }
+    return map;
+  }
+
+  // 工具：把 privates Map 的资源写回 ServerPlayer[]（trade 执行后同步）
+  function syncPrivatesBack(
+    players: ServerPlayer[],
+    privates: Map<string, PlayerPrivate>
+  ) {
+    for (const p of players) {
+      const priv = privates.get(p.playerId);
+      if (priv) p.resources = priv.resources;
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // 发起交易
+  // ----------------------------------------------------------------
+  socket.on(ACTION_TRADE_OFFER, (req: TradeOfferReq) => {
+    const room = rooms.get(req.roomId);
+    if (!room) return;
+
+    const player = room.players.find(p => p.socketId === socket.id);
+    if (!player) return;
+
+    const privates = buildPrivatesMap(room.players);
+    const result = handleTradeOffer(room, privates, player.playerId, req);
+    if (!result.ok) return socket.emit(GAME_ERROR, { message: result.error });
+
+    // tradeOffer 已写入 room，直接广播（其他玩家会看到交易面板）
+    broadcastState(io, room);
+  });
+
+  // ----------------------------------------------------------------
+  // 接受交易（表示愿意，但还未成交，需等发起方 confirm）
+  // ----------------------------------------------------------------
+  socket.on(ACTION_TRADE_ACCEPT, (req: TradeAcceptReq) => {
+    const room = rooms.get(req.roomId);
+    if (!room) return;
+
+    const player = room.players.find(p => p.socketId === socket.id);
+    if (!player) return;
+
+    const privates = buildPrivatesMap(room.players);
+    const result = handleTradeAccept(room, privates, player.playerId, req);
+    if (!result.ok) return socket.emit(GAME_ERROR, { message: result.error });
+
+    // 广播后，发起方能看到谁接受了
+    broadcastState(io, room);
+  });
+
+  // ----------------------------------------------------------------
+  // 拒绝交易
+  // ----------------------------------------------------------------
+  socket.on(ACTION_TRADE_REJECT, (req: TradeRejectReq) => {
+    const room = rooms.get(req.roomId);
+    if (!room) return;
+
+    const player = room.players.find(p => p.socketId === socket.id);
+    if (!player) return;
+
+    const result = handleTradeReject(room, player.playerId, req);
+    if (!result.ok) return socket.emit(GAME_ERROR, { message: result.error });
+
+    broadcastState(io, room);
+  });
+
+  // ----------------------------------------------------------------
+  // 确认成交（发起方选择与某个已接受的玩家正式交换资源）
+  // ----------------------------------------------------------------
+  socket.on(ACTION_TRADE_CONFIRM, (req: TradeConfirmReq) => {
+    const room = rooms.get(req.roomId);
+    if (!room) return;
+
+    const player = room.players.find(p => p.socketId === socket.id);
+    if (!player) return;
+
+    // 用可写的 privates Map 执行资源交换
+    const privates = buildPrivatesMap(room.players);
+    const result = handleTradeConfirm(room, privates, player.playerId, req);
+    if (!result.ok) return socket.emit(GAME_ERROR, { message: result.error });
+
+    // 把 privates 里修改后的资源写回 room.players
+    syncPrivatesBack(room.players, privates);
+
+    // 成交后 tradeOffer 已清空，资源已更新，广播新状态
+    broadcastState(io, room);
+  });
+
+  // ----------------------------------------------------------------
+  // 取消交易（发起方取消，tradeOffer 清空）
+  // ----------------------------------------------------------------
+  socket.on(ACTION_TRADE_CANCEL, (req: TradeCancelReq) => {
+    const room = rooms.get(req.roomId);
+    if (!room) return;
+
+    const player = room.players.find(p => p.socketId === socket.id);
+    if (!player) return;
+
+    const result = handleTradeCancel(room, player.playerId, req);
+    if (!result.ok) return socket.emit(GAME_ERROR, { message: result.error });
+
+    broadcastState(io, room);
+  });
+
+
   // ----------------------------------------------------------
   // 断线处理
   // ----------------------------------------------------------
+  // ----------------------------------------------------------
+  // 断线处理（延迟删除 + 支持重连）
+  // ----------------------------------------------------------
   socket.on("disconnect", () => {
     console.log("🔌 断开:", socket.id);
-    // 简单处理：从所有房间移除该玩家（可后续改为重连机制）
+
     for (const [roomId, room] of rooms.entries()) {
-      const idx = room.players.findIndex(p => p.socketId === socket.id);
-      if (idx === -1) continue;
-      room.players.splice(idx, 1);
-      if (room.players.length === 0) {
-        rooms.delete(roomId);
-      } else {
-        if (room.hostPlayerId === room.players[idx]?.playerId) {
-          room.hostPlayerId = room.players[0].playerId;
+      const player = room.players.find(p => p.socketId === socket.id);
+      if (!player) continue;
+
+      // ✅ 标记离线，不立即删除
+      player.isOnline = false;
+      broadcastState(io, room);  // 通知其他人该玩家离线了
+
+      // ✅ 30秒后若未重连，真正删除
+      player.disconnectTimer = setTimeout(() => {
+        const currentRoom = rooms.get(roomId);
+        if (!currentRoom) return;
+
+        const idx = currentRoom.players.findIndex(p => p.playerId === player.playerId);
+        if (idx === -1) return;  // 已经重连了，不删
+
+        currentRoom.players.splice(idx, 1);
+        console.log(`🗑️ 玩家 ${player.name} 超时未重连，已移除`);
+
+        if (currentRoom.players.length === 0) {
+          rooms.delete(roomId);
+          console.log(`🗑️ 房间 ${roomId} 已清空删除`);
+        } else {
+          // ✅ 修复原来的 Bug：先删除再转移房主
+          if (currentRoom.hostPlayerId === player.playerId) {
+            const newHost =
+              currentRoom.players.find(p => p.isOnline) ?? currentRoom.players[0];
+            currentRoom.hostPlayerId = newHost.playerId;
+            console.log(`👑 房主转移给: ${newHost.name}`);
+          }
+          if (currentRoom.currentPlayerIndex >= currentRoom.players.length) {
+            currentRoom.currentPlayerIndex = 0;
+            currentRoom.hasRolled = false;
+          }
+          broadcastState(io, currentRoom);
         }
-        if (room.currentPlayerIndex >= room.players.length) {
-          room.currentPlayerIndex = 0;
-        }
-        broadcastState(io, room);
-      }
+      }, 30_000);  // 30秒超时
+
       break;
     }
+  });
+
+  // ----------------------------------------------------------
+  // 重连处理
+  // ----------------------------------------------------------
+  socket.on("reconnect_player", (
+    payload: { roomId: string; playerId: string },
+    callback: (resp: StateSyncPayload | { error: string }) => void
+  ) => {
+    const room = rooms.get(payload.roomId);
+    if (!room) {
+      callback({ error: "房间不存在或已解散" });
+      return;
+    }
+
+    const player = room.players.find(p => p.playerId === payload.playerId);
+    if (!player) {
+      callback({ error: "玩家不存在（可能已超时被移除）" });
+      return;
+    }
+
+    // ✅ 取消删除定时器
+    if (player.disconnectTimer) {
+      clearTimeout(player.disconnectTimer);
+      player.disconnectTimer = undefined;
+    }
+
+    // ✅ 更新 socketId + 重新加入房间频道 + 标记在线
+    player.socketId = socket.id;
+    player.isOnline = true;
+    socket.join(payload.roomId);
+    console.log(`✅ 玩家 ${player.name} 重连成功，新 socketId: ${socket.id}`);
+
+    // ✅ 把完整状态回传给重连的玩家
+    const state = buildGameState(room);
+    const you = buildPrivate(player);
+    const resp: StateSyncPayload = { roomId: payload.roomId, you, state };
+    callback(resp);
+
+    // ✅ 广播给其他人：玩家回来了
+    broadcastState(io, room);
   });
 });
 

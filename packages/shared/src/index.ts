@@ -21,6 +21,12 @@ export const ACTION_BANK_TRADE = "action_bank_trade";
 export const ACTION_MOVE_ROBBER = "action_move_robber";
 export const ACTION_DISCARD = "action_discard";
 export const ACTION_ROB_PLAYER = "action_rob_player";
+export const ACTION_TRADE_OFFER   = "action_trade_offer";
+export const ACTION_TRADE_ACCEPT  = "action_trade_accept";
+export const ACTION_TRADE_REJECT  = "action_trade_reject";
+export const ACTION_TRADE_CONFIRM = "action_trade_confirm";
+export const ACTION_TRADE_CANCEL  = "action_trade_cancel";
+
 
 // ============================================================
 // 资源类型
@@ -87,13 +93,31 @@ export interface Edge {
 }
 
 // ============================================================
+// 港口
+// ============================================================
+export type PortType = ResourceType | "any";
+
+export interface Port {
+  id: string;
+  /** 港口类型：具体资源(2:1) 或 通用(3:1) */
+  type: PortType;
+  /** 港口显示坐标（在海洋边缘） */
+  x: number;
+  y: number;
+  /** 该港口关联的两个顶点 ID（玩家在这两个顶点建造即可使用） */
+  vertexIds: [string, string];
+}
+
+// ============================================================
 // 棋盘
 // ============================================================
 export interface Board {
   hexes: Hex[];
   vertices: Vertex[];
   edges: Edge[];
+  ports: Port[];   // ✅ 新增
 }
+
 
 // ============================================================
 // 玩家资源手牌（仅自己可见）
@@ -127,6 +151,8 @@ export interface PlayerSummary {
   hasLongestRoad: boolean;
   /** 公开的发展卡数量（不透露种类） */
   devCardCount: number;
+  /** ✅ 新增：是否在线（用于断线重连显示） */
+  isOnline: boolean;
 }
 
 // ============================================================
@@ -159,6 +185,16 @@ export interface RobberInfo {
   /** 是否已完成丢牌阶段，等待移动强盗 */
   waitingForMove: boolean;
 }
+
+export interface TradeOffer {
+  tradeId: string;
+  fromPlayerId: string;
+  offer: PlayerResources;
+  request: PlayerResources;
+  responses: Record<string, "pending" | "accepted" | "rejected">;
+  status: "pending" | "confirmed" | "cancelled";
+}
+
 
 // ============================================================
 // 道路建设发展卡临时状态
@@ -193,6 +229,7 @@ export interface GameState {
   monopolyPending?: boolean;
   /** 当前回合号（用于发展卡购买后下回合才能用） */
   turnNumber?: number;
+  tradeOffer?: TradeOffer | null;
 }
 
 // ============================================================
@@ -282,6 +319,7 @@ export interface BankTradeReq {
   give: ResourceType;
   /** 换取的资源 */
   receive: ResourceType;
+  rate?: number;
 }
 
 /** 移动强盗 */
@@ -297,6 +335,30 @@ export interface DiscardReq {
   roomId: string;
   resources: PlayerResources;
 }
+
+export interface TradeOfferReq {
+  roomId: string;
+  offer: PlayerResources;
+  request: PlayerResources;
+}
+export interface TradeAcceptReq {
+  roomId: string;
+  tradeId: string;
+}
+export interface TradeRejectReq {
+  roomId: string;
+  tradeId: string;
+}
+export interface TradeConfirmReq {
+  roomId: string;
+  tradeId: string;
+  targetPlayerId: string;
+}
+export interface TradeCancelReq {
+  roomId: string;
+  tradeId: string;
+}
+
 
 // ============================================================
 // 建造费用

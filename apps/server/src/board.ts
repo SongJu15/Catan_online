@@ -1,4 +1,5 @@
-﻿import type { Board, Hex, Vertex, Edge, TerrainType } from "@catan/shared";
+﻿import type { Board, Hex, Vertex, Edge, Port, PortType, TerrainType } from "@catan/shared";
+
 
 // ============================================================
 // 标准卡坦岛地形分布（19块六边形）
@@ -150,9 +151,71 @@ export function generateBoard(): Board {
     }
   }
 
+  // ============================================================
+  // 生成港口（固定位置，标准卡坦岛布局）
+  // ============================================================
+  function generatePorts(hexes: Hex[], vertices: Vertex[]): Port[] {
+    // 标准卡坦岛有 9 个港口，固定分布在地图边缘
+    // 每个港口定义：所在六边形 ID + 该六边形的哪两个顶点索引（0-5）+ 类型
+    // pointy-top 顶点顺序：0=上, 1=右上, 2=右下, 3=下, 4=左下, 5=左上
+    const PORT_DEFS: { hexIndex: number; vi1: number; vi2: number; type: PortType }[] = [
+      // 上边
+      { hexIndex: 0, vi1: 0, vi2: 5, type: "ore" },  // 左上角
+      { hexIndex: 1, vi1: 0, vi2: 5, type: "any" },  // 上中左
+      { hexIndex: 2, vi1: 0, vi2: 1, type: "any" },  // 上中右
+      // 右边
+      { hexIndex: 6, vi1: 1, vi2: 2, type: "sheep" },  // 右上
+      { hexIndex: 11, vi1: 1, vi2: 2, type: "any" },  // 右中
+      { hexIndex: 15, vi1: 2, vi2: 3, type: "brick" },  // 右下
+      // 下边
+      { hexIndex: 18, vi1: 3, vi2: 4, type: "any" },  // 右下角
+      { hexIndex: 17, vi1: 3, vi2: 4, type: "wheat" },  // 下中右
+      // 左边
+      { hexIndex: 12, vi1: 4, vi2: 5, type: "wood" },  // 左中
+      { hexIndex: 7, vi1: 4, vi2: 5, type: "any" },  // 左上
+    ]
+
+    const ports: Port[] = []
+
+    for (let i = 0; i < PORT_DEFS.length; i++) {
+      const def = PORT_DEFS[i]
+      const hex = hexes[def.hexIndex]
+      if (!hex) continue
+
+      const vId1 = hex.vertexIds[def.vi1]
+      const vId2 = hex.vertexIds[def.vi2]
+      const v1 = vertices.find(v => v.id === vId1)
+      const v2 = vertices.find(v => v.id === vId2)
+      if (!v1 || !v2) continue
+
+      // 港口显示坐标：两个顶点中点，再向外偏移
+      const midX = (v1.x + v2.x) / 2
+      const midY = (v1.y + v2.y) / 2
+      // 向远离六边形中心的方向偏移
+      const dx = midX - hex.x
+      const dy = midY - hex.y
+      const len = Math.sqrt(dx * dx + dy * dy) || 1
+      const portX = Math.round((midX + (dx / len) * 28) * 10) / 10
+      const portY = Math.round((midY + (dy / len) * 28) * 10) / 10
+
+      ports.push({
+        id: `port${i}`,
+        type: def.type,
+        x: portX,
+        y: portY,
+        vertexIds: [vId1, vId2],
+      })
+    }
+
+    return ports
+  }
+
+
+  const ports = generatePorts(hexes, [...vertexMap.values()]);
   return {
     hexes,
     vertices: [...vertexMap.values()],
     edges: [...edgeMap.values()],
+    ports,   // ✅ 新增
   };
 }
