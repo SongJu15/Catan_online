@@ -230,6 +230,7 @@ export interface GameState {
   /** 当前回合号（用于发展卡购买后下回合才能用） */
   turnNumber?: number;
   tradeOffer?: TradeOffer | null;
+  devDeck?: DevCardType[];
 }
 
 // ============================================================

@@ -2,7 +2,7 @@
 
 
 // ============================================================
-// 标准卡坦岛地形分布（19块六边形）
+// 标准卡坦岛地形分布（18块六边形，不含沙漠）
 // ============================================================
 const RESOURCE_TILES: TerrainType[] = [
   "wood", "wood", "wood", "wood",
@@ -10,7 +10,6 @@ const RESOURCE_TILES: TerrainType[] = [
   "sheep", "sheep", "sheep", "sheep",
   "wheat", "wheat", "wheat", "wheat",
   "ore", "ore", "ore",
-  "desert",
 ];
 
 // 标准骰子数字分布（18个数字，沙漠不分配）
@@ -45,7 +44,13 @@ function vertexKey(x: number, y: number): string {
 // 生成棋盘
 // ============================================================
 export function generateBoard(): Board {
-  const shuffledResources = shuffle(RESOURCE_TILES);
+  // 沙漠固定在中央（索引9，第3行正中间），其余18块随机洗牌
+  const shuffled18 = shuffle(RESOURCE_TILES);
+  const shuffledResources: TerrainType[] = [
+    ...shuffled18.slice(0, 9),
+    "desert",
+    ...shuffled18.slice(9),
+  ];
 
   // 分配骰子数字（跳过沙漠）
   const diceQueue = [...DICE_NUMBERS];
@@ -160,43 +165,43 @@ export function generateBoard(): Board {
     // pointy-top 顶点顺序：0=上, 1=右上, 2=右下, 3=下, 4=左下, 5=左上
     const PORT_DEFS: { hexIndex: number; vi1: number; vi2: number; type: PortType }[] = [
       // 上边
-      { hexIndex: 0, vi1: 0, vi2: 5, type: "ore" },  // 左上角
-      { hexIndex: 1, vi1: 0, vi2: 5, type: "any" },  // 上中左
-      { hexIndex: 2, vi1: 0, vi2: 1, type: "any" },  // 上中右
+      { hexIndex: 0, vi1: 0, vi2: 5, type: "ore" },   // 左上角
+      { hexIndex: 1, vi1: 0, vi2: 5, type: "any" },   // 上中左
+      { hexIndex: 2, vi1: 0, vi2: 1, type: "any" },   // 上中右
       // 右边
-      { hexIndex: 6, vi1: 1, vi2: 2, type: "sheep" },  // 右上
+      { hexIndex: 6, vi1: 1, vi2: 2, type: "sheep" }, // 右上
       { hexIndex: 11, vi1: 1, vi2: 2, type: "any" },  // 右中
-      { hexIndex: 15, vi1: 2, vi2: 3, type: "brick" },  // 右下
+      { hexIndex: 15, vi1: 2, vi2: 3, type: "brick" },// 右下
       // 下边
       { hexIndex: 18, vi1: 3, vi2: 4, type: "any" },  // 右下角
-      { hexIndex: 17, vi1: 3, vi2: 4, type: "wheat" },  // 下中右
+      { hexIndex: 17, vi1: 3, vi2: 4, type: "wheat" },// 下中右
       // 左边
-      { hexIndex: 12, vi1: 4, vi2: 5, type: "wood" },  // 左中
-      { hexIndex: 7, vi1: 4, vi2: 5, type: "any" },  // 左上
-    ]
+      { hexIndex: 12, vi1: 4, vi2: 5, type: "wood" }, // 左中
+      { hexIndex: 7, vi1: 4, vi2: 5, type: "any" },   // 左上
+    ];
 
-    const ports: Port[] = []
+    const ports: Port[] = [];
 
     for (let i = 0; i < PORT_DEFS.length; i++) {
-      const def = PORT_DEFS[i]
-      const hex = hexes[def.hexIndex]
-      if (!hex) continue
+      const def = PORT_DEFS[i];
+      const hex = hexes[def.hexIndex];
+      if (!hex) continue;
 
-      const vId1 = hex.vertexIds[def.vi1]
-      const vId2 = hex.vertexIds[def.vi2]
-      const v1 = vertices.find(v => v.id === vId1)
-      const v2 = vertices.find(v => v.id === vId2)
-      if (!v1 || !v2) continue
+      const vId1 = hex.vertexIds[def.vi1];
+      const vId2 = hex.vertexIds[def.vi2];
+      const v1 = vertices.find(v => v.id === vId1);
+      const v2 = vertices.find(v => v.id === vId2);
+      if (!v1 || !v2) continue;
 
       // 港口显示坐标：两个顶点中点，再向外偏移
-      const midX = (v1.x + v2.x) / 2
-      const midY = (v1.y + v2.y) / 2
+      const midX = (v1.x + v2.x) / 2;
+      const midY = (v1.y + v2.y) / 2;
       // 向远离六边形中心的方向偏移
-      const dx = midX - hex.x
-      const dy = midY - hex.y
-      const len = Math.sqrt(dx * dx + dy * dy) || 1
-      const portX = Math.round((midX + (dx / len) * 28) * 10) / 10
-      const portY = Math.round((midY + (dy / len) * 28) * 10) / 10
+      const dx = midX - hex.x;
+      const dy = midY - hex.y;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const portX = Math.round((midX + (dx / len) * 28) * 10) / 10;
+      const portY = Math.round((midY + (dy / len) * 28) * 10) / 10;
 
       ports.push({
         id: `port${i}`,
@@ -204,18 +209,17 @@ export function generateBoard(): Board {
         x: portX,
         y: portY,
         vertexIds: [vId1, vId2],
-      })
+      });
     }
 
-    return ports
+    return ports;
   }
-
 
   const ports = generatePorts(hexes, [...vertexMap.values()]);
   return {
     hexes,
     vertices: [...vertexMap.values()],
     edges: [...edgeMap.values()],
-    ports,   // ✅ 新增
+    ports,
   };
 }
