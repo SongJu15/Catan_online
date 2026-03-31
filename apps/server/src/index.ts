@@ -75,6 +75,20 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 // ============================================================
+// 创建发展卡牌堆（25张）
+// ============================================================
+function createDevCardDeck(): DevCardType[] {
+  const deck: DevCardType[] = [
+    ...Array(14).fill('knight'),
+    ...Array(5).fill('victory_point'),
+    ...Array(2).fill('road_building'),
+    ...Array(2).fill('monopoly'),
+    ...Array(2).fill('year_of_plenty'),
+  ];
+  return shuffle(deck);
+}
+
+// ============================================================
 // 玩家颜色池
 // ============================================================
 const COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c"];
@@ -142,6 +156,7 @@ function buildGameState(room: ServerRoom): GameState {
     monopolyPending: room.monopolyPending,
     turnNumber: room.turnNumber,
     tradeOffer: room.tradeOffer,
+    devDeck: [...room.devCardDeck],
   };
 }
 
@@ -540,7 +555,7 @@ io.on("connection", (socket: Socket) => {
       winner: null,
       robberInfo: null,
       robberHexId: null,
-      devCardDeck: shuffle([...DEV_CARD_DECK]),
+      devCardDeck: createDevCardDeck(),
       roadBuildingInfo: null,
       yearOfPlentyPending: false,
       monopolyPending: false,
@@ -628,6 +643,9 @@ io.on("connection", (socket: Socket) => {
     // 生成棋盘
     room.board = generateBoard();
     placeInitialRobber(room);
+
+    // 初始化发展卡牌堆
+    room.devCardDeck = createDevCardDeck();
 
     // setup 蛇形顺序
     const order = shuffle(room.players.map(p => p.playerId));
