@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { DevCardType } from '@catan/shared'
 
 const DEV_CARD_LABELS: Record<DevCardType, string> = {
@@ -17,291 +17,311 @@ const DEV_CARD_COLORS: Record<DevCardType, string> = {
   year_of_plenty: '#2980b9',
 }
 
+const DEV_CARD_DESC: Record<DevCardType, string> = {
+  knight: '移动强盗并可抢劫一名玩家',
+  victory_point: '立即获得1个胜利点（自动生效）',
+  road_building: '免费建造2条道路',
+  year_of_plenty: '从银行获取任意2种资源',
+  monopoly: '宣布一种资源，所有玩家将该资源全给你',
+}
+
 interface Props {
-  onSelect: (cardType: DevCardType) => void
+  cardCount: number
+  revealedCard: DevCardType | null
+  isWaiting: boolean
   onClose: () => void
-  remainingCards: DevCardType[]
 }
 
-interface CardState {
-  originalIndex: number
-  displayIndex: number
-  isSelected: boolean
-  isFlipping: boolean
-}
+export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClose }: Props) {
+  const totalCards = Math.max(cardCount, 1)
 
-export default function DevCardDeck({ onSelect, onClose, remainingCards }: Props) {
-  const totalCards = remainingCards.length
-  const [cards, setCards] = useState<CardState[]>(
-    remainingCards.map((_, i) => ({
-      originalIndex: i,
-      displayIndex: i,
-      isSelected: false,
-      isFlipping: false,
-    }))
-  )
+  const [selectedPos, setSelectedPos] = useState<number | null>(null)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
-  const [selectedCard, setSelectedCard] = useState<number | null>(null)
+  const [revealed, setRevealed] = useState(false)
 
-  // 计算扇形参数
-  const fanAngle = Math.min(90, totalCards * 4)
-  const startAngle = -fanAngle / 2
+  useEffect(() => {
+    if (revealedCard && selectedPos !== null) {
+      const timer = setTimeout(() => setRevealed(true), 700)
+      return () => clearTimeout(timer)
+    }
+  }, [revealedCard, selectedPos])
+
+  const fanAngle = Math.min(80, totalCards * 5)
   const radius = 450
 
-  const getCardTransform = (index: number, isHovered: boolean, currentTotal: number) => {
-    const currentAngleStep = currentTotal > 1 ? fanAngle / (currentTotal - 1) : 0
-    const angle = startAngle + index * currentAngleStep
+  const getCardTransform = (index: number, total: number, isHovered: boolean) => {
+    const step = total > 1 ? fanAngle / (total - 1) : 0
+    const angle = -fanAngle / 2 + index * step
     const rad = (angle * Math.PI) / 180
     const x = radius * Math.sin(rad)
     const y = -radius * (1 - Math.cos(rad))
 
     let offsetX = 0
     let offsetY = 0
-
     if (isHovered) {
       offsetX = 30 * Math.sin(rad)
       offsetY = -30 * Math.cos(rad)
     }
-
-    // 相邻卡片散开
     if (hoveredIndex !== null && !isHovered) {
-      const distance = Math.abs(index - hoveredIndex)
-      if (distance === 1) {
-        const direction = index > hoveredIndex ? 1 : -1
-        const spreadRad = rad + direction * 0.15
-        offsetX = 25 * Math.sin(spreadRad) * direction
-        offsetY = -25 * Math.cos(spreadRad)
+      const dist = Math.abs(index - hoveredIndex)
+      if (dist === 1) {
+        const dir = index > hoveredIndex ? 1 : -1
+        offsetX += dir * 18
       }
     }
-
-    return {
-      x: x + offsetX,
-      y: y + offsetY,
-      rotation: angle,
-    }
+    return { x: x + offsetX, y: y + offsetY, rotation: angle }
   }
 
-  const handleCardClick = (displayIndex: number) => {
-    if (selectedCard !== null) return
-
-    const card = cards[displayIndex]
-    const originalIndex = card.originalIndex
-
-    setSelectedCard(displayIndex)
-
-    // 标记为选中和翻转
-    setCards(prev =>
-      prev.map((c, i) =>
-        i === displayIndex
-          ? { ...c, isSelected: true, isFlipping: true }
-          : c
-      )
-    )
-
-    // 600ms 后获取卡片类型并回调
-    setTimeout(() => {
-      const cardType = remainingCards[originalIndex]
-      onSelect(cardType)
-
-      // 再等 800ms 让玩家看清卡面
-      setTimeout(() => {
-        onClose()
-      }, 800)
-    }, 600)
+  const handleCardClick = (index: number) => {
+    if (selectedPos !== null) return
+    setSelectedPos(index)
+    setHoveredIndex(null)
   }
+
+  const selectedTransform = selectedPos !== null
+    ? getCardTransform(selectedPos, totalCards, false)
+    : null
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
+    // 外层：半透明遮罩
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.6)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 9999,
+    }}>
+      {/* 内层：居中弹窗 —— 宽度改大，overflow visible */}
+      <div style={{
         background: 'linear-gradient(135deg, #1a2a3a 0%, #2c3e50 100%)',
+        borderRadius: 20,
+        padding: '24px 24px 32px',
+        width: 760,           // ✅ 580 → 760
+        maxWidth: '95vw',     // ✅ 90vw → 95vw
+        position: 'relative',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'flex-end',
-        zIndex: 9999,
-        paddingBottom: '80px',
-      }}
-    >
-      {/* 标题 */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '40px',
-          color: '#fff',
-          fontSize: '32px',
-          fontWeight: 'bold',
-          textShadow: '2px 2px 8px rgba(0,0,0,0.5)',
-        }}
-      >
-        📜 选择一张发展卡 ({totalCards}/25)
-      </div>
+        boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        overflow: 'visible',  // ✅ 新增，允许扇形牌超出弹窗边界
+      }}>
+        <style>{`
+          @keyframes devCardFly {
+            0%   { transform: translate(var(--sx), var(--sy)) rotate(var(--sr)) scale(1); }
+            40%  { transform: translate(0px, -180px) rotate(0deg) scale(1.25); }
+            100% { transform: translate(0px, -220px) rotate(0deg) scale(1.3); }
+          }
+          @keyframes devCardFlip {
+            0%   { transform: rotateY(0deg); }
+            100% { transform: rotateY(180deg); }
+          }
+          @keyframes resultFadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
 
-      {/* 卡片扇形区域 */}
-      <div
-        style={{
+        {/* 标题 */}
+        <div style={{
+          color: '#fff', fontSize: 22, fontWeight: 'bold',
+          textShadow: '2px 2px 8px rgba(0,0,0,0.5)',
+          textAlign: 'center',
+          marginBottom: 16,
+        }}>
+          {selectedPos === null
+            ? `🎴 点击一张牌抽取发展卡（剩余 ${totalCards} 张）`
+            : revealed
+              ? '🎉 抽卡结果揭晓！'
+              : '⏳ 正在确认结果...'}
+        </div>
+
+        {/* 扇形牌区 */}
+        <div style={{
           position: 'relative',
           width: '100%',
-          height: '400px',
-          perspective: '1500px',
-        }}
-      >
-        {cards.map((card, displayIndex) => {
-          const { x, y, rotation } = getCardTransform(
-            displayIndex,
-            hoveredIndex === displayIndex,
-            cards.length
-          )
-          const cardType = remainingCards[card.originalIndex]
-          const isHovered = hoveredIndex === displayIndex
+          height: 300,
+          perspective: 1500,
+          overflow: 'visible',  // ✅ 新增，牌可超出此区域
+        }}>
+          {/* 未选中的背面牌 */}
+          {Array.from({ length: totalCards }, (_, i) => {
+            if (i === selectedPos) return null
+            const displayIndex = selectedPos !== null && i > selectedPos ? i - 1 : i
+            const displayTotal = selectedPos !== null ? totalCards - 1 : totalCards
+            const isHovered = hoveredIndex === i
+            const { x, y, rotation } = getCardTransform(displayIndex, displayTotal, isHovered)
 
-          return (
-            <div
-              key={card.originalIndex}
-              onMouseEnter={() => !card.isSelected && setHoveredIndex(displayIndex)}
-              onMouseLeave={() => setHoveredIndex(null)}
-              onClick={() => handleCardClick(displayIndex)}
-              style={{
-                position: 'absolute',
-                left: '50%',
-                bottom: '0',
-                width: '120px',
-                height: '170px',
-                marginLeft: '-60px',
-                transform: `translate(${x}px, ${y}px) rotate(${rotation}deg) ${
-                  isHovered ? 'scale(1.15)' : 'scale(1)'
-                }`,
-                transformOrigin: 'center bottom',
-                transition: card.isSelected
-                  ? 'none'
-                  : 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                cursor: card.isSelected ? 'default' : 'pointer',
-                zIndex: isHovered ? 100 : displayIndex,
-                pointerEvents: card.isSelected ? 'none' : 'auto',
-                animation: card.isSelected
-                  ? 'cardSelect 1s cubic-bezier(0.4, 0, 0.2, 1) forwards'
-                  : 'none',
-              }}
-            >
+            return (
               <div
+                key={i}
+                onMouseEnter={() => { if (selectedPos === null) setHoveredIndex(i) }}
+                onMouseLeave={() => setHoveredIndex(null)}
+                onClick={() => handleCardClick(i)}
                 style={{
-                  width: '100%',
-                  height: '100%',
-                  position: 'relative',
-                  transformStyle: 'preserve-3d',
-                  transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
-                  transform: card.isFlipping ? 'rotateY(180deg)' : 'rotateY(0deg)',
+                  position: 'absolute', left: '50%', bottom: 0,
+                  width: 100, height: 145, marginLeft: -50,
+                  transform: `translate(${x}px, ${y}px) rotate(${rotation}deg) ${isHovered ? 'scale(1.12)' : 'scale(1)'}`,
+                  transformOrigin: 'center bottom',
+                  transition: 'all 0.25s cubic-bezier(0.34,1.56,0.64,1)',
+                  cursor: selectedPos === null ? 'pointer' : 'default',
+                  zIndex: isHovered ? 100 : i,
                 }}
               >
-                {/* 卡背 */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    width: '100%',
-                    height: '100%',
-                    backfaceVisibility: 'hidden',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '12px',
-                    border: '3px solid #fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '48px',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                  }}
-                >
-                  📜
-                </div>
+                <CardBack />
+              </div>
+            )
+          })}
 
-                {/* 卡面 */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    width: '100%',
-                    height: '100%',
-                    backfaceVisibility: 'hidden',
-                    background: DEV_CARD_COLORS[cardType],
-                    borderRadius: '12px',
-                    border: '4px solid #ffd700',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '12px',
-                    boxShadow: '0 12px 32px rgba(255,215,0,0.6)',
-                    transform: 'rotateY(180deg)',
-                  }}
-                >
-                  <div style={{ fontSize: '40px', marginBottom: '8px' }}>
-                    {DEV_CARD_LABELS[cardType].split(' ')[0]}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: '13px',
-                      color: '#fff',
-                      textAlign: 'center',
-                      fontWeight: 'bold',
-                      textShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    {DEV_CARD_LABELS[cardType].split(' ').slice(1).join(' ')}
-                  </div>
+          {/* 选中的牌（飞起 + 翻牌） */}
+          {selectedPos !== null && selectedTransform && (
+            <div
+              style={{
+                position: 'absolute', left: '50%', bottom: 0,
+                width: 100, height: 145, marginLeft: -50,
+                transformOrigin: 'center bottom',
+                zIndex: 200,
+                ...({
+                  '--sx': `${selectedTransform.x}px`,
+                  '--sy': `${selectedTransform.y}px`,
+                  '--sr': `${selectedTransform.rotation}deg`,
+                } as React.CSSProperties),
+                animation: 'devCardFly 0.8s cubic-bezier(0.4,0,0.2,1) forwards',
+              }}
+            >
+              <div style={{
+                width: '100%', height: '100%',
+                position: 'relative',
+                transformStyle: 'preserve-3d',
+                animation: revealed ? 'devCardFlip 0.7s 0.1s cubic-bezier(0.4,0,0.2,1) forwards' : undefined,
+              }}>
+                {/* 牌背 */}
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  backfaceVisibility: 'hidden',
+                }}>
+                  <CardBack highlighted />
                 </div>
+                {/* 牌面（翻转后显示） */}
+                {revealedCard && (
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    backfaceVisibility: 'hidden',
+                    transform: 'rotateY(180deg)',
+                    background: DEV_CARD_COLORS[revealedCard],
+                    borderRadius: 12,
+                    border: '4px solid #ffd700',
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    padding: 10,
+                    boxShadow: '0 12px 32px rgba(255,215,0,0.6)',
+                  }}>
+                    <div style={{ fontSize: 36, marginBottom: 6 }}>
+                      {DEV_CARD_LABELS[revealedCard].split(' ')[0]}
+                    </div>
+                    <div style={{
+                      fontSize: 12, color: '#fff', textAlign: 'center',
+                      fontWeight: 'bold', lineHeight: 1.3,
+                    }}>
+                      {DEV_CARD_LABELS[revealedCard].split(' ').slice(1).join(' ')}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          )
-        })}
+          )}
+        </div>
+
+        {/* 结果详情卡片 */}
+        {revealed && revealedCard && (
+          <div style={{
+            marginTop: 16,
+            animation: 'resultFadeIn 0.5s ease-out',
+            background: 'rgba(0,0,0,0.4)',
+            border: `2px solid ${DEV_CARD_COLORS[revealedCard]}`,
+            borderRadius: 14, padding: '16px 32px',
+            textAlign: 'center', color: '#fff',
+            width: '100%',
+            boxShadow: `0 0 40px ${DEV_CARD_COLORS[revealedCard]}66`,
+          }}>
+            <div style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 8, color: '#ffd700' }}>
+              🎉 恭喜！抽到了
+            </div>
+            <div style={{
+              fontSize: 22, fontWeight: 'bold', marginBottom: 8,
+              color: DEV_CARD_COLORS[revealedCard],
+            }}>
+              {DEV_CARD_LABELS[revealedCard]}
+            </div>
+            <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 16, lineHeight: 1.6 }}>
+              {DEV_CARD_DESC[revealedCard]}
+            </div>
+            <button
+              onClick={onClose}
+              style={{
+                padding: '10px 32px', fontSize: 15,
+                background: DEV_CARD_COLORS[revealedCard],
+                color: '#fff', border: 'none', borderRadius: 8,
+                cursor: 'pointer', fontWeight: 'bold',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              }}
+            >
+              收下！
+            </button>
+          </div>
+        )}
+
+        {/* 等待服务器响应提示 */}
+        {selectedPos !== null && !revealed && (
+          <div style={{
+            marginTop: 16,
+            color: 'rgba(255,255,255,0.6)', fontSize: 14,
+          }}>
+            ⏳ 等待服务器确认...
+          </div>
+        )}
+
+        {/* 取消按钮（未选牌时显示） */}
+        {selectedPos === null && !isWaiting && (
+          <button
+            onClick={onClose}
+            style={{
+              marginTop: 16,
+              padding: '12px 36px', fontSize: 16,
+              background: '#e74c3c', color: '#fff',
+              border: 'none', borderRadius: 10,
+              cursor: 'pointer', fontWeight: 'bold',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            }}
+          >
+            取消
+          </button>
+        )}
+
       </div>
+    </div>
+  )
+}
 
-      {/* 取消按钮 */}
-      {selectedCard === null && (
-        <button
-          onClick={onClose}
-          style={{
-            position: 'absolute',
-            bottom: '30px',
-            padding: '14px 40px',
-            fontSize: '18px',
-            background: '#e74c3c',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '10px',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            transition: 'all 0.2s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)'
-            e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.4)'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)'
-            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)'
-          }}
-        >
-          取消
-        </button>
-      )}
-
-      <style>{`
-        @keyframes cardSelect {
-          0% {
-            transform: translate(var(--start-x), var(--start-y)) rotate(var(--start-rotation)) scale(1.15);
-          }
-          30% {
-            transform: translate(0, -200px) rotate(0deg) scale(1.2);
-          }
-          100% {
-            transform: translate(0, -250px) rotate(0deg) scale(1.3);
-          }
-        }
-      `}</style>
+/** 卡背组件 */
+function CardBack({ highlighted = false }: { highlighted?: boolean }) {
+  return (
+    <div style={{
+      width: '100%', height: '100%',
+      borderRadius: 12,
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      border: highlighted ? '3px solid #ffd700' : '3px solid rgba(255,255,255,0.4)',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      boxShadow: highlighted
+        ? '0 8px 30px rgba(255,215,0,0.4)'
+        : '0 4px 16px rgba(0,0,0,0.4)',
+    }}>
+      <div style={{ fontSize: 36 }}>🎴</div>
+      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.8)', marginTop: 6, fontWeight: 'bold' }}>
+        卡坦岛
+      </div>
     </div>
   )
 }

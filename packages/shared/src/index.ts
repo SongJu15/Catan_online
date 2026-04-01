@@ -230,7 +230,7 @@ export interface GameState {
   /** 当前回合号（用于发展卡购买后下回合才能用） */
   turnNumber?: number;
   tradeOffer?: TradeOffer | null;
-  devDeck?: DevCardType[];
+  devCardDeckCount?: number;
 }
 
 // ============================================================
@@ -403,4 +403,30 @@ export function addResources(have: PlayerResources, add: PlayerResources): Playe
   const result = { ...have };
   (Object.keys(add) as (keyof PlayerResources)[]).forEach(k => { result[k] += add[k]; });
   return result;
+}
+
+/**
+ * 计算玩家对某种资源的最优交易比率（前后端共用）
+ */
+export function calcBestTradeRate(
+  playerId: string,
+  resource: ResourceType,
+  ports: Port[],
+  vertices: Vertex[]
+): number {
+  let best = 4
+
+  for (const port of ports) {
+    const hasBuilding = port.vertexIds.some(vId => {
+      const vertex = vertices.find(v => v.id === vId)
+      return vertex?.ownerPlayerId === playerId
+    })
+
+    if (!hasBuilding) continue
+
+    if (port.type === resource) return 2
+    if (port.type === 'any') best = Math.min(best, 3)
+  }
+
+  return best
 }

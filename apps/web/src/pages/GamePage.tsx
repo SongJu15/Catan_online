@@ -15,6 +15,9 @@ import type {
   ResourceType, DevCardType,
 } from '@catan/shared'
 import TradePanel from '../components/TradePanel'
+// 在文件顶部，原有 import 之后添加：
+import DevCardDeck from '../components/DevCardDeck'
+import { calcBestTradeRate } from '@catan/shared'
 
 const RESOURCE_LABELS: Record<ResourceType, string> = {
   wood: '木材', brick: '砖块', ore: '矿石', wheat: '小麦', sheep: '羊毛',
@@ -117,49 +120,43 @@ export default function GamePage() {
   // ✅ 新增：抽卡相关状态
   const [drawnCard, setDrawnCard] = useState<DevCardType | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
+  const isDrawingRef = useRef(false)   // ✅ 新增这一行
   const prevDevCardCountRef = useRef<number>(0)
-
-// ✅ 新增：调试面板
-  const [showDebugPanel, setShowDebugPanel] = useState(false)
-  const [debugResources, setDebugResources] = useState<PlayerResources>(
-    { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0 }
-  )
 
   useEffect(() => {
     if (!syncData) { navigate('/'); return }
-    // ✅ 新增：监听快捷键 Ctrl+Shift+D 打开调试面板
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-        e.preventDefault()
-        setShowDebugPanel(prev => !prev)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-
     socket.on(STATE_SYNC, (payload: StateSyncPayload) => {
       setSyncData(payload)
 
-      // 检测购买发展卡后新增的卡片
-      if (payload.you.devCards.length > prevDevCardCountRef.current) {
+      if (isDrawingRef.current && payload.you.devCards.length > prevDevCardCountRef.current) {
         const newCard = payload.you.devCards[payload.you.devCards.length - 1]
         setDrawnCard(newCard.type)
+        setModal('draw_card')          // ✅ 确认收到新卡后再开弹窗
+        isDrawingRef.current = false
         setIsDrawing(false)
+        prevDevCardCountRef.current = payload.you.devCards.length
+      } else {
         prevDevCardCountRef.current = payload.you.devCards.length
       }
     })
 
+
+
     socket.on(GAME_ERROR, (payload: { message: string }) => {
       setErrorMsg(payload.message)
       setTimeout(() => setErrorMsg(null), 3000)
-      // ✅ 如果购买失败，关闭抽卡界面
-      if (modal === 'draw_card') {
+
+      // ✅ 用 ref 判断，避免闭包陷阱
+      if (isDrawingRef.current) {
         setModal(null)
         setDrawnCard(null)
+        isDrawingRef.current = false
         setIsDrawing(false)
+        prevDevCardCountRef.current = 0  // 重置，下次 STATE_SYNC 会更新
       }
     })
+
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
       socket.off(STATE_SYNC)
       socket.off(GAME_ERROR)
     }
@@ -211,17 +208,15 @@ export default function GamePage() {
     )
   }
 
-  // 计算某种资源的最优交易比率
+  // ✅ 替换 getBestTradeRate，内部调用 shared 的统一实现
   const getBestTradeRate = (resource: ResourceType): number => {
-    const myPorts = getMyPorts()
-    // 检查是否有该资源的 2:1 港口
-    const hasSpecific = myPorts.some(p => p.type === resource)
-    if (hasSpecific) return 2
-    // 检查是否有 3:1 通用港口
-    const hasGeneral = myPorts.some(p => p.type === 'any')
-    if (hasGeneral) return 3
-    // 默认银行 4:1
-    return 4
+    if (!syncData.state.board) return 4  // ✅ lobby阶段board为null，直接返回默认4:1
+    return calcBestTradeRate(
+      you.playerId,
+      resource,
+      syncData.state.board.ports,
+      syncData.state.board.vertices
+    )
   }
 
   // ============================================================
@@ -262,16 +257,11 @@ export default function GamePage() {
 
   const handleBuyDevCard = () => {
     if (!isMyTurn || !hasRolled || isLocked) return
-    
-    // 记录购买前的发展卡数量
     prevDevCardCountRef.current = you.devCards.length
-    
-    // 打开抽卡界面，进入等待状态
-    setModal('draw_card')
+    isDrawingRef.current = true
     setIsDrawing(true)
     setDrawnCard(null)
-    
-    // 发送购买请求（结果从 STATE_SYNC 回调里获取）
+    // ✅ 删除 setModal('draw_card')，等服务端确认后再开弹窗
     socket.emit(ACTION_BUY_DEV_CARD, { roomId: id })
   }
 
@@ -280,6 +270,7 @@ export default function GamePage() {
   const handleCloseDrawCard = () => {
     setModal(null)
     setDrawnCard(null)
+    isDrawingRef.current = false   // ✅ 新增
     setIsDrawing(false)
   }
 
@@ -422,872 +413,401 @@ export default function GamePage() {
     return true
   }
 
-  // ✅ 新增：调试功能 - 调整资源
-  const handleDebugAdjustResource = (resource: ResourceType, delta: number) => {
-    setDebugResources(prev => ({
-      ...prev,
-      [resource]: Math.max(0, prev[resource] + delta)
-    }))
-  }
+  // ============================================================
+  // 渲染
+  // ============================================================
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column',
+      height: '100vh', overflow: 'hidden',
+      fontFamily: 'sans-serif', background: '#1a2a3a', color: '#fff',
+      padding: 10, gap: 8, boxSizing: 'border-box',
+    }}>
 
-  const handleDebugApply = () => {
-    // 临时方案：直接修改本地 syncData（仅客户端生效）
-    if (syncData) {
-      setSyncData({
-        ...syncData,
-        you: {
-          ...syncData.you,
-          resources: debugResources
-        }
-      })
-    }
-    setShowDebugPanel(false)
-  }
-
-  const handleDebugReset = () => {
-    setDebugResources({ wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0 })
-  }
-
-  const handleDebugSetAll = (amount: number) => {
-    setDebugResources({ 
-      wood: amount, 
-      brick: amount, 
-      sheep: amount, 
-      wheat: amount, 
-      ore: amount 
-    })
-  }
-
-// ============================================================
-// 渲染
-// ============================================================
-return (
-  <div style={{
-    display: 'flex', flexDirection: 'column',
-    height: '100vh', overflow: 'hidden',
-    fontFamily: 'sans-serif', background: '#1a2a3a', color: '#fff',
-    padding: 10, gap: 8, boxSizing: 'border-box',
-  }}>
-
-    {/* 错误提示 */}
-    {errorMsg && (
-      <div style={{
-        position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
-        background: '#e74c3c', color: '#fff', padding: '10px 24px',
-        borderRadius: 8, zIndex: 9999, fontWeight: 'bold',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
-      }}>⚠️ {errorMsg}</div>
-    )}
-
-    {/* 强盗移动提示 */}
-    {isMovingRobber && (
-      <div style={{
-        position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
-        background: '#e67e22', color: '#fff', padding: '10px 24px',
-        borderRadius: 8, zIndex: 9998, fontWeight: 'bold',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
-        pointerEvents: 'none',
-      }}>🗡️ 点击地图上的地块放置强盗（不能放在原位置）</div>
-    )}
-
-    {/* 游戏结束 */}
-    {phase === 'ended' && (
-      <div style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998,
-      }}>
-        <div style={{ background: '#fff', color: '#333', padding: 48, borderRadius: 20, textAlign: 'center', minWidth: 340 }}>
-          <div style={{ fontSize: 64 }}>🏆</div>
-          <h2 style={{ fontSize: 28, margin: '12px 0' }}>
-            {players.find(p => p.playerId === winner)?.name ?? '某人'} 获胜！
-          </h2>
-          <div style={{ marginBottom: 20 }}>
-            {[...players].sort((a, b) => b.victoryPoints - a.victoryPoints).map((p, i) => (
-              <div key={p.playerId} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 16px', margin: '4px 0', borderRadius: 8,
-                background: p.playerId === winner ? '#fff9e6' : '#f5f5f5',
-                border: p.playerId === winner ? '2px solid #f39c12' : '2px solid transparent',
-              }}>
-                <span style={{ fontWeight: 'bold' }}>
-                  {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`} {p.name}
-                </span>
-                <span style={{ color: '#e67e22', fontWeight: 'bold' }}>{p.victoryPoints} 分</span>
-              </div>
-            ))}
-          </div>
-          <button onClick={() => navigate('/')} style={btnStyle('#3498db')}>返回首页</button>
-        </div>
-      </div>
-    )}
-
-    {/* 调试面板 */}
-    {showDebugPanel && (
-      <DebugPanel
-        resources={debugResources}
-        onAdjust={handleDebugAdjustResource}
-        onApply={handleDebugApply}
-        onReset={handleDebugReset}
-        onSetAll={handleDebugSetAll}
-        onClose={() => setShowDebugPanel(false)}
-      />
-    )}
-
-    {/* 丢牌弹窗 */}
-    {showDiscardModal && (
-      <ModalOverlay>
-        <DiscardModal
-          resources={you.resources}
-          selection={discardSelection}
-          onChange={setDiscardSelection}
-          onConfirm={handleDiscardConfirm}
-        />
-      </ModalOverlay>
-    )}
-
-    {/* 其他弹窗 */}
-    {!showDiscardModal && modal && (
-      <ModalOverlay>
-        {modal === 'draw_card' && (
-          <DrawCardModal isDrawing={isDrawing} drawnCard={drawnCard} onClose={handleCloseDrawCard} />
-        )}
-        {modal === 'rob_player' && (
-          <div style={modalBox}>
-            <h3 style={{ margin: '0 0 12px' }}>🗡️ 选择抢劫目标</h3>
-            <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.8 }}>该地块上有其他玩家，选择抢劫对象（或跳过）</p>
-            {robTargets.map(t => (
-              <button key={t.playerId} onClick={() => handleRobPlayerConfirm(t.playerId)}
-                style={{ ...btnStyle(t.color), marginBottom: 8 }}>
-                抢劫 {t.name}（{t.totalCards} 张牌）
-              </button>
-            ))}
-            <button onClick={() => handleRobPlayerConfirm(null)} style={btnStyle('#888')}>不抢劫，直接放置</button>
-          </div>
-        )}
-        {modal === 'bank_trade' && (
-          <BankTradeModal resources={you.resources} give={tradeGive} receive={tradeReceive}
-            onGiveChange={setTradeGive} onReceiveChange={setTradeReceive}
-            onConfirm={handleBankTradeConfirm} onCancel={() => setModal(null)} />
-        )}
-        {modal === 'port_trade' && (
-          <PortTradeModal resources={you.resources} give={portTradeGive} receive={portTradeReceive}
-            rate={portTradeRate} onGiveChange={handlePortTradeGiveChange}
-            onReceiveChange={setPortTradeReceive} onConfirm={handlePortTradeConfirm}
-            onCancel={() => setModal(null)} getBestRate={getBestTradeRate} />
-        )}
-        {modal === 'year_of_plenty' && (
-          <div style={modalBox}>
-            <h3 style={{ margin: '0 0 12px' }}>🌟 丰收年 — 选择2种资源</h3>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 13, opacity: 0.8 }}>第1种资源</label>
-              <ResourceSelect value={yopRes1} onChange={setYopRes1} />
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 13, opacity: 0.8 }}>第2种资源</label>
-              <ResourceSelect value={yopRes2} onChange={setYopRes2} />
-            </div>
-            <button onClick={handleYopConfirm} style={btnStyle('#27ae60')}>确认</button>
-            <button onClick={() => setModal(null)} style={{ ...btnStyle('#888'), marginTop: 8 }}>取消</button>
-          </div>
-        )}
-        {modal === 'monopoly' && (
-          <div style={modalBox}>
-            <h3 style={{ margin: '0 0 12px' }}>💰 垄断 — 选择资源种类</h3>
-            <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.8 }}>所有其他玩家将把该资源全部给你</p>
-            <ResourceSelect value={monopolyRes} onChange={setMonopolyRes} />
-            <button onClick={handleMonopolyConfirm} style={{ ...btnStyle('#e67e22'), marginTop: 12 }}>确认</button>
-            <button onClick={() => setModal(null)} style={{ ...btnStyle('#888'), marginTop: 8 }}>取消</button>
-          </div>
-        )}
-        {modal === 'road_building_hint' && (
-          <div style={{ ...modalBox, textAlign: 'center' }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>🛣️</div>
-            <p>道路建设卡已激活！<br />可以免费建造 2 条道路</p>
-          </div>
-        )}
-      </ModalOverlay>
-    )}
-
-    {/* ══════════════════════════════════════
-        行2：主体区（占满剩余高度）
-        左：玩家列表 | 中：地图+底部自身信息 | 右：游戏规则+操作+玩家交易
-    ══════════════════════════════════════ */}
-    <div style={{ display: 'flex', gap: 8, flex: '1 1 0', minHeight: 0 }}>
-
-      {/* ── 左列：标题栏 + 玩家列表 ── */}
-      <div style={{
-        width: 200, flexShrink: 0,
-        display: 'flex', flexDirection: 'column', gap: 6,
-        overflowY: 'auto',
-      }}>
-
-        {/* 标题栏（移到左列顶部） */}
+      {/* 错误提示 */}
+      {errorMsg && (
         <div style={{
-          display: 'flex', flexDirection: 'column', gap: 4,
-          background: 'rgba(255,255,255,0.08)', padding: '8px 10px',
-          borderRadius: 10, flexShrink: 0,
-        }}>
-          <span style={{ fontSize: 15, fontWeight: 'bold' }}>🏝️ 卡坦岛</span>
-          <Tag color="rgba(255,255,255,0.15)">{getPhaseText(phase)}</Tag>
-          {currentPlayer && <Tag color={currentPlayer.color}>当前：{currentPlayer.name}</Tag>}
-          {isMyTurn && phase !== 'ended' && <Tag color="#27ae60">🎯 你的回合！</Tag>}
-          {diceResult && (
-            <Tag color="#f39c12">🎲 {diceResult[0]}+{diceResult[1]}={diceResult[0] + diceResult[1]}</Tag>
-          )}
-          {iMustDiscard && <Tag color="#e74c3c">⚠️ 需要丢牌！</Tag>}
-          {isMovingRobber && <Tag color="#e67e22">🗡️ 点击地块放强盗</Tag>}
-          {isRoadBuilding && <Tag color="#9b59b6">🛣️ 道路建设中（剩{roadBuildingInfo!.roadsLeft}条）</Tag>}
-        </div>
+          position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
+          background: '#e74c3c', color: '#fff', padding: '10px 24px',
+          borderRadius: 8, zIndex: 9999, fontWeight: 'bold',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
+        }}>⚠️ {errorMsg}</div>
+      )}
 
-        {/* 玩家列表 */}
-        {players.map(p => (
-          <div key={p.playerId} style={{
-            padding: '8px 10px', borderRadius: 8,
-            background: p.playerId === currentPlayerId ? p.color + 'cc' : 'rgba(255,255,255,0.08)',
-            border: p.playerId === you.playerId ? '2px solid #fff' : '2px solid transparent',
-            fontSize: 13,
-            opacity: p.isOnline === false ? 0.5 : 1,
-          }}>
-            <div style={{ fontWeight: 'bold', marginBottom: 3, fontSize: 15, wordBreak: 'break-all' }}>
-              {p.name}
-              {p.playerId === you.playerId && ' (你)'}
-              {p.hasLargestArmy && ' ⚔️'}
-              {p.hasLongestRoad && ' 🛣️'}
-              {p.isOnline === false && ' 🔴'}
-            </div>
-            <div>🏆 {p.victoryPoints} 分</div>
-            <div>🃏 {p.totalCards} 张</div>
-            <div>📜 {p.devCardCount} 张</div>
-            <div style={{ marginTop: 3, opacity: 0.75, fontSize: 13 }}>
-              🏘️{p.settlements} 🏰{p.cities} 🛣️{p.roads}
-            </div>
-            <div style={{ opacity: 0.75, fontSize: 13 }}>⚔️ {p.knightsPlayed} 骑士</div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── 中列：地图（上）+ 自身信息（下） ── */}
-      <div style={{ flex: '1 1 0', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-
-        {/* 地图 */}
+      {/* 强盗移动提示 */}
+      {isMovingRobber && (
         <div style={{
-          flex: '1 1 0', background: '#2c3e50', borderRadius: 12,
-          overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          {board && (
-            <svg width="800" height="700" viewBox="0 0 800 700"
-              style={{ display: 'block', maxWidth: '100%', maxHeight: '100%' }}>
-              <rect width="800" height="700" fill="#1a6b9a" rx="12" />
-              {board.ports?.map((port: Port) => (
-                <PortTile key={port.id} port={port} board={board} myPlayerId={you.playerId} />
-              ))}
-              {board.hexes.map((hex: Hex) => (
-                <HexagonTile key={hex.id} hex={hex}
-                  isRobberTarget={isMovingRobber && hex.id !== robberHexId}
-                  onClick={() => isMovingRobber && handleRobberHexSelect(hex.id)}
-                  selected={selectedRobberHex === hex.id} />
-              ))}
-              {board.edges.map((edge: Edge) => (
-                <EdgeLine key={edge.id} edge={edge}
-                  onClick={() => handleEdgeClick(edge.id)}
-                  isClickable={
-                    isMyTurn && !isLocked && (
-                      phase === 'setup_road' ||
-                      (phase === 'playing' && (!!hasRolled || isRoadBuilding) && !edge.ownerPlayerId)
-                    )
-                  }
-                  players={players} myColor={myColor} />
-              ))}
-              {board.vertices.map((vertex: Vertex) => (
-                <VertexPoint key={vertex.id} vertex={vertex}
-                  onClick={() => handleVertexClick(vertex.id, vertex)}
-                  isClickable={
-                    isMyTurn && !isLocked && (
-                      phase === 'setup_settlement' ||
-                      (phase === 'playing' && !!hasRolled)
-                    )
-                  }
-                  players={players} myPlayerId={you.playerId} myColor={myColor} />
-              ))}
-            </svg>
-          )}
-        </div>
+          position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
+          background: '#e67e22', color: '#fff', padding: '10px 24px',
+          borderRadius: 8, zIndex: 9998, fontWeight: 'bold',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+        }}>🗡️ 点击地图上的地块放置强盗（不能放在原位置）</div>
+      )}
 
-        {/* 底部：我的资源 + 我的发展卡（横向排列） */}
+      {/* 游戏结束 */}
+      {phase === 'ended' && (
         <div style={{
-          display: 'flex', gap: 8, flexShrink: 0,
-          background: 'rgba(255,255,255,0.08)', borderRadius: 10,
-          padding: '10px 12px',
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998,
         }}>
-
-          {/* 我的资源 */}
-          <div style={{ flex: '1 1 0', minWidth: 0 }}>
-            <h3 style={panelTitle}>🎒 我的资源</h3>
-            <ResourceDisplay resources={you.resources} />
-          </div>
-
-          {/* 我的港口（有才显示） */}
-          {board?.ports && getMyPorts().length > 0 && (
-            <div style={{ flex: '1 1 0', minWidth: 0 }}>
-              <h3 style={panelTitle}>⚓ 我的港口</h3>
-              {getMyPorts().map(port => (
-                <div key={port.id} style={{
-                  fontSize: 12, padding: '4px 8px', marginBottom: 4,
-                  background: 'rgba(255,255,255,0.08)', borderRadius: 6,
+          <div style={{ background: '#fff', color: '#333', padding: 48, borderRadius: 20, textAlign: 'center', minWidth: 340 }}>
+            <div style={{ fontSize: 64 }}>🏆</div>
+            <h2 style={{ fontSize: 28, margin: '12px 0' }}>
+              {players.find(p => p.playerId === winner)?.name ?? '某人'} 获胜！
+            </h2>
+            <div style={{ marginBottom: 20 }}>
+              {[...players].sort((a, b) => b.victoryPoints - a.victoryPoints).map((p, i) => (
+                <div key={p.playerId} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 16px', margin: '4px 0', borderRadius: 8,
+                  background: p.playerId === winner ? '#fff9e6' : '#f5f5f5',
+                  border: p.playerId === winner ? '2px solid #f39c12' : '2px solid transparent',
                 }}>
-                  {port.type === 'any'
-                    ? '🌊 通用港口（3:1）'
-                    : `${RESOURCE_EMOJI[port.type as ResourceType]} ${RESOURCE_LABELS[port.type as ResourceType]} 港口（2:1）`}
+                  <span style={{ fontWeight: 'bold' }}>
+                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`} {p.name}
+                  </span>
+                  <span style={{ color: '#e67e22', fontWeight: 'bold' }}>{p.victoryPoints} 分</span>
                 </div>
               ))}
             </div>
-          )}
+            <button onClick={() => navigate('/')} style={btnStyle('#3498db')}>返回首页</button>
+          </div>
+        </div>
+      )}
 
-          {/* 我的发展卡（始终显示，横向排列） */}
-          <div style={{ flex: '1 1 0', minWidth: 0 }}>
-            <h3 style={panelTitle}>📜 我的发展卡</h3>
-            {you.devCards.length === 0 ? (
-              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>暂无发展卡</span>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-                {you.devCards.map((card, i) => {
-                  const usable = canPlayCard(card)
-                  return (
-                    <div key={i} onClick={() => usable && handlePlayDevCard(card.type)}
-                      title={DEV_CARD_DESC[card.type]}
-                      style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        padding: '6px 10px', borderRadius: 6,
-                        background: usable ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)',
-                        border: usable ? '1px solid rgba(255,255,255,0.4)' : '1px solid rgba(255,255,255,0.1)',
-                        cursor: usable ? 'pointer' : 'default',
-                        opacity: usable ? 1 : 0.5,
-                        transition: 'all 0.15s',
-                      }}>
-                      <div style={{ fontWeight: 'bold', fontSize: 13 }}>{DEV_CARD_LABELS[card.type]}</div>
-                      <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
-                        {card.type === 'victory_point'
-                          ? '自动生效'
-                          : (turnNumber ?? 0) <= card.turnBought
-                            ? '下回合可用'
-                            : usable ? '点击使用' : '不可用'}
+      {/* 丢牌弹窗 */}
+      {showDiscardModal && (
+        <ModalOverlay>
+          <DiscardModal
+            resources={you.resources}
+            selection={discardSelection}
+            onChange={setDiscardSelection}
+            onConfirm={handleDiscardConfirm}
+          />
+        </ModalOverlay>
+      )}
+
+      {/* 其他弹窗 */}
+      {!showDiscardModal && modal && (
+        <ModalOverlay>
+          {modal === 'rob_player' && (
+            <div style={modalBox}>
+              <h3 style={{ margin: '0 0 12px' }}>🗡️ 选择抢劫目标</h3>
+              <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.8 }}>该地块上有其他玩家，选择抢劫对象（或跳过）</p>
+              {robTargets.map(t => (
+                <button key={t.playerId} onClick={() => handleRobPlayerConfirm(t.playerId)}
+                  style={{ ...btnStyle(t.color), marginBottom: 8 }}>
+                  抢劫 {t.name}（{t.totalCards} 张牌）
+                </button>
+              ))}
+              <button onClick={() => handleRobPlayerConfirm(null)} style={btnStyle('#888')}>不抢劫，直接放置</button>
+            </div>
+          )}
+          {modal === 'bank_trade' && (
+            <BankTradeModal resources={you.resources} give={tradeGive} receive={tradeReceive}
+              onGiveChange={setTradeGive} onReceiveChange={setTradeReceive}
+              onConfirm={handleBankTradeConfirm} onCancel={() => setModal(null)} />
+          )}
+          {modal === 'port_trade' && (
+            <PortTradeModal resources={you.resources} give={portTradeGive} receive={portTradeReceive}
+              rate={portTradeRate} onGiveChange={handlePortTradeGiveChange}
+              onReceiveChange={setPortTradeReceive} onConfirm={handlePortTradeConfirm}
+              onCancel={() => setModal(null)} getBestRate={getBestTradeRate} />
+          )}
+          {modal === 'year_of_plenty' && (
+            <div style={modalBox}>
+              <h3 style={{ margin: '0 0 12px' }}>🌟 丰收年 — 选择2种资源</h3>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 13, opacity: 0.8 }}>第1种资源</label>
+                <ResourceSelect value={yopRes1} onChange={setYopRes1} />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, opacity: 0.8 }}>第2种资源</label>
+                <ResourceSelect value={yopRes2} onChange={setYopRes2} />
+              </div>
+              <button onClick={handleYopConfirm} style={btnStyle('#27ae60')}>确认</button>
+              <button onClick={() => setModal(null)} style={{ ...btnStyle('#888'), marginTop: 8 }}>取消</button>
+            </div>
+          )}
+          {modal === 'monopoly' && (
+            <div style={modalBox}>
+              <h3 style={{ margin: '0 0 12px' }}>💰 垄断 — 选择资源种类</h3>
+              <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.8 }}>所有其他玩家将把该资源全部给你</p>
+              <ResourceSelect value={monopolyRes} onChange={setMonopolyRes} />
+              <button onClick={handleMonopolyConfirm} style={{ ...btnStyle('#e67e22'), marginTop: 12 }}>确认</button>
+              <button onClick={() => setModal(null)} style={{ ...btnStyle('#888'), marginTop: 8 }}>取消</button>
+            </div>
+          )}
+          {modal === 'road_building_hint' && (
+            <div style={{ ...modalBox, textAlign: 'center' }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>🛣️</div>
+              <p>道路建设卡已激活！<br />可以免费建造 2 条道路</p>
+            </div>
+          )}
+        </ModalOverlay>
+      )}
+
+      {modal === 'draw_card' && (
+        <DevCardDeck
+          cardCount={state.devCardDeckCount ?? 25}
+          revealedCard={drawnCard}
+          isWaiting={isDrawing}
+          onClose={handleCloseDrawCard}
+        />
+      )}
+
+      {/* ══════════════════════════════════════
+        行2：主体区（占满剩余高度）
+        左：玩家列表 | 中：地图+底部自身信息 | 右：游戏规则+操作+玩家交易
+    ══════════════════════════════════════ */}
+      <div style={{ display: 'flex', gap: 8, flex: '1 1 0', minHeight: 0 }}>
+
+        {/* ── 左列：标题栏 + 玩家列表 ── */}
+        <div style={{
+          width: 200, flexShrink: 0,
+          display: 'flex', flexDirection: 'column', gap: 6,
+          overflowY: 'auto',
+        }}>
+
+          {/* 标题栏（移到左列顶部） */}
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 4,
+            background: 'rgba(255,255,255,0.08)', padding: '8px 10px',
+            borderRadius: 10, flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 15, fontWeight: 'bold' }}>🏝️ 卡坦岛</span>
+            <Tag color="rgba(255,255,255,0.15)">{getPhaseText(phase)}</Tag>
+            {currentPlayer && <Tag color={currentPlayer.color}>当前：{currentPlayer.name}</Tag>}
+            {isMyTurn && phase !== 'ended' && <Tag color="#27ae60">🎯 你的回合！</Tag>}
+            {diceResult && (
+              <Tag color="#f39c12">🎲 {diceResult[0]}+{diceResult[1]}={diceResult[0] + diceResult[1]}</Tag>
+            )}
+            {iMustDiscard && <Tag color="#e74c3c">⚠️ 需要丢牌！</Tag>}
+            {isMovingRobber && <Tag color="#e67e22">🗡️ 点击地块放强盗</Tag>}
+            {isRoadBuilding && <Tag color="#9b59b6">🛣️ 道路建设中（剩{roadBuildingInfo!.roadsLeft}条）</Tag>}
+          </div>
+
+          {/* 玩家列表 */}
+          {players.map(p => (
+            <div key={p.playerId} style={{
+              padding: '8px 10px', borderRadius: 8,
+              background: p.playerId === currentPlayerId ? p.color + 'cc' : 'rgba(255,255,255,0.08)',
+              border: p.playerId === you.playerId ? '2px solid #fff' : '2px solid transparent',
+              fontSize: 13,
+              opacity: p.isOnline === false ? 0.5 : 1,
+            }}>
+              <div style={{ fontWeight: 'bold', marginBottom: 3, fontSize: 15, wordBreak: 'break-all' }}>
+                {p.name}
+                {p.playerId === you.playerId && ' (你)'}
+                {p.hasLargestArmy && ' ⚔️'}
+                {p.hasLongestRoad && ' 🛣️'}
+                {p.isOnline === false && ' 🔴'}
+              </div>
+              <div>🏆 {p.victoryPoints} 分</div>
+              <div>🃏 {p.totalCards} 张</div>
+              <div>📜 {p.devCardCount} 张</div>
+              <div style={{ marginTop: 3, opacity: 0.75, fontSize: 13 }}>
+                🏘️{p.settlements} 🏰{p.cities} 🛣️{p.roads}
+              </div>
+              <div style={{ opacity: 0.75, fontSize: 13 }}>⚔️ {p.knightsPlayed} 骑士</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── 中列：地图（上）+ 自身信息（下） ── */}
+        <div style={{ flex: '1 1 0', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+
+          {/* 地图 */}
+          <div style={{
+            flex: '1 1 0', background: '#2c3e50', borderRadius: 12,
+            overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {board && (
+              <svg width="800" height="700" viewBox="0 0 800 700"
+                style={{ display: 'block', maxWidth: '100%', maxHeight: '100%' }}>
+                <rect width="800" height="700" fill="#1a6b9a" rx="12" />
+                {board.ports?.map((port: Port) => (
+                  <PortTile key={port.id} port={port} board={board} myPlayerId={you.playerId} />
+                ))}
+                {board.hexes.map((hex: Hex) => (
+                  <HexagonTile key={hex.id} hex={hex}
+                    isRobberTarget={isMovingRobber && hex.id !== robberHexId}
+                    onClick={() => isMovingRobber && handleRobberHexSelect(hex.id)}
+                    selected={selectedRobberHex === hex.id} />
+                ))}
+                {board.edges.map((edge: Edge) => (
+                  <EdgeLine key={edge.id} edge={edge}
+                    onClick={() => handleEdgeClick(edge.id)}
+                    isClickable={
+                      isMyTurn && !isLocked && (
+                        phase === 'setup_road' ||
+                        (phase === 'playing' && (!!hasRolled || isRoadBuilding) && !edge.ownerPlayerId)
+                      )
+                    }
+                    players={players} myColor={myColor} />
+                ))}
+                {board.vertices.map((vertex: Vertex) => (
+                  <VertexPoint key={vertex.id} vertex={vertex}
+                    onClick={() => handleVertexClick(vertex.id, vertex)}
+                    isClickable={
+                      isMyTurn && !isLocked && (
+                        phase === 'setup_settlement' ||
+                        (phase === 'playing' && !!hasRolled)
+                      )
+                    }
+                    players={players} myPlayerId={you.playerId} myColor={myColor} />
+                ))}
+              </svg>
+            )}
+          </div>
+
+          {/* 底部：我的资源 + 我的发展卡（横向排列） */}
+          <div style={{
+            display: 'flex', gap: 8, flexShrink: 0,
+            background: 'rgba(255,255,255,0.08)', borderRadius: 10,
+            padding: '10px 12px',
+          }}>
+
+            {/* 我的资源 */}
+            <div style={{ flex: '1 1 0', minWidth: 0 }}>
+              <h3 style={panelTitle}>🎒 我的资源</h3>
+              <ResourceDisplay resources={you.resources} />
+            </div>
+
+            {/* 我的港口（有才显示） */}
+            {board?.ports && getMyPorts().length > 0 && (
+              <div style={{ flex: '1 1 0', minWidth: 0 }}>
+                <h3 style={panelTitle}>⚓ 我的港口</h3>
+                {getMyPorts().map(port => (
+                  <div key={port.id} style={{
+                    fontSize: 12, padding: '4px 8px', marginBottom: 4,
+                    background: 'rgba(255,255,255,0.08)', borderRadius: 6,
+                  }}>
+                    {port.type === 'any'
+                      ? '🌊 通用港口（3:1）'
+                      : `${RESOURCE_EMOJI[port.type as ResourceType]} ${RESOURCE_LABELS[port.type as ResourceType]} 港口（2:1）`}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 我的发展卡（始终显示，横向排列） */}
+            <div style={{ flex: '1 1 0', minWidth: 0 }}>
+              <h3 style={panelTitle}>📜 我的发展卡</h3>
+              {you.devCards.length === 0 ? (
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>暂无发展卡</span>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                  {you.devCards.map((card, i) => {
+                    const usable = canPlayCard(card)
+                    return (
+                      <div key={i} onClick={() => usable && handlePlayDevCard(card.type)}
+                        title={DEV_CARD_DESC[card.type]}
+                        style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'center',
+                          padding: '6px 10px', borderRadius: 6,
+                          background: usable ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)',
+                          border: usable ? '1px solid rgba(255,255,255,0.4)' : '1px solid rgba(255,255,255,0.1)',
+                          cursor: usable ? 'pointer' : 'default',
+                          opacity: usable ? 1 : 0.5,
+                          transition: 'all 0.15s',
+                        }}>
+                        <div style={{ fontWeight: 'bold', fontSize: 13 }}>{DEV_CARD_LABELS[card.type]}</div>
+                        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
+                          {card.type === 'victory_point'
+                            ? '自动生效'
+                            : (turnNumber ?? 0) <= card.turnBought
+                              ? '下回合可用'
+                              : usable ? '点击使用' : '不可用'}
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+
+        {/* ── 右列：游戏规则 + 操作 + 玩家交易 ── */}
+        <div style={{
+          width: 300, fontSize: 15, flexShrink: 0,
+          display: 'flex', flexDirection: 'column', gap: 8,
+          overflowY: 'auto',
+        }}>
+
+          {/* 游戏规则 */}
+          <div style={panelStyle}>
+            <h3 style={panelTitle}>📋 游戏规则</h3>
+            <div style={{ fontSize: 12, lineHeight: 1.9, opacity: 0.85 }}>
+              <div>🏘️ 定居点: 木砖羊麦各×1</div>
+              <div>🏰 城市: 麦×2 矿×3</div>
+              <div>🛣️ 道路: 木×1 砖×1</div>
+              <div>📜 发展卡: 羊×1 麦×1 矿×1</div>
+              <div style={{ marginTop: 6, opacity: 0.7 }}>🏆 10分获胜</div>
+              <div style={{ opacity: 0.7 }}>⚔️ 最大军队: 3骑士 +2分</div>
+              <div style={{ opacity: 0.7 }}>🛣️ 最长道路: 5条 +2分</div>
+              <div style={{ marginTop: 6, opacity: 0.7 }}>⚓ 2:1港口: 同类×2换1</div>
+              <div style={{ opacity: 0.7 }}>🌊 3:1港口: 任意×3换1</div>
+            </div>
+          </div>
+
+          {/* 操作按钮 */}
+          <div style={panelStyle}>
+            <h3 style={panelTitle}>⚡ 操作</h3>
+            {phase === 'playing' && isMyTurn ? (
+              <>
+                <button onClick={handleRollDice} disabled={!!hasRolled || isLocked}
+                  style={btnStyle(hasRolled || isLocked ? '#555' : '#e67e22')}>
+                  🎲 {hasRolled ? '已掷骰' : '掷骰子'}
+                </button>
+                <button onClick={handleOpenPortTrade} disabled={!hasRolled || isLocked}
+                  style={btnStyle(!hasRolled || isLocked ? '#555' : '#16a085')}>
+                  ⚓ 港口/银行交易
+                </button>
+                <button onClick={handleBuyDevCard} disabled={!hasRolled || isLocked}
+                  style={btnStyle(!hasRolled || isLocked ? '#555' : '#2980b9')}>
+                  📜 购买发展卡
+                </button>
+                <button onClick={handleEndTurn} disabled={!hasRolled || isLocked || !!roadBuildingInfo}
+                  style={btnStyle(!hasRolled || isLocked || !!roadBuildingInfo ? '#555' : '#27ae60')}>
+                  ✅ 结束回合
+                </button>
+                {hasRolled && !isLocked && (
+                  <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6, lineHeight: 1.6 }}>
+                    点击空顶点建定居点<br />
+                    点击自己的定居点升城市<br />
+                    点击空边建道路
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ padding: '16px 10px', textAlign: 'center', fontSize: 13, opacity: 0.7, lineHeight: 1.6 }}>
+                ⏳ 当前不是你的回合<br />无需操作，请等待...
               </div>
             )}
           </div>
 
+          {/* 玩家交易 */}
+          <TradePanel
+            roomId={id!}
+            myPlayerId={you.playerId}
+            myResources={you.resources}
+            players={players}
+            tradeOffer={state.tradeOffer}
+            isMyTurn={isMyTurn}
+            hasRolled={!!hasRolled}
+            isLocked={isLocked}
+          />
+
         </div>
-      </div>
-
-      {/* ── 右列：游戏规则 + 操作 + 玩家交易 ── */}
-      <div style={{
-        width: 300, fontSize: 15, flexShrink: 0,
-        display: 'flex', flexDirection: 'column', gap: 8,
-        overflowY: 'auto',
-      }}>
-
-        {/* 游戏规则 */}
-        <div style={panelStyle}>
-          <h3 style={panelTitle}>📋 游戏规则</h3>
-          <div style={{ fontSize: 12, lineHeight: 1.9, opacity: 0.85 }}>
-            <div>🏘️ 定居点: 木砖羊麦各×1</div>
-            <div>🏰 城市: 麦×2 矿×3</div>
-            <div>🛣️ 道路: 木×1 砖×1</div>
-            <div>📜 发展卡: 羊×1 麦×1 矿×1</div>
-            <div style={{ marginTop: 6, opacity: 0.7 }}>🏆 10分获胜</div>
-            <div style={{ opacity: 0.7 }}>⚔️ 最大军队: 3骑士 +2分</div>
-            <div style={{ opacity: 0.7 }}>🛣️ 最长道路: 5条 +2分</div>
-            <div style={{ marginTop: 6, opacity: 0.7 }}>⚓ 2:1港口: 同类×2换1</div>
-            <div style={{ opacity: 0.7 }}>🌊 3:1港口: 任意×3换1</div>
-          </div>
-        </div>
-
-        {/* 操作按钮 */}
-        <div style={panelStyle}>
-          <h3 style={panelTitle}>⚡ 操作</h3>
-          {phase === 'playing' && isMyTurn ? (
-            <>
-              <button onClick={handleRollDice} disabled={!!hasRolled || isLocked}
-                style={btnStyle(hasRolled || isLocked ? '#555' : '#e67e22')}>
-                🎲 {hasRolled ? '已掷骰' : '掷骰子'}
-              </button>
-              <button onClick={handleOpenPortTrade} disabled={!hasRolled || isLocked}
-                style={btnStyle(!hasRolled || isLocked ? '#555' : '#16a085')}>
-                ⚓ 港口/银行交易
-              </button>
-              <button onClick={handleBuyDevCard} disabled={!hasRolled || isLocked}
-                style={btnStyle(!hasRolled || isLocked ? '#555' : '#2980b9')}>
-                📜 购买发展卡
-              </button>
-              <button onClick={handleEndTurn} disabled={!hasRolled || isLocked || !!roadBuildingInfo}
-                style={btnStyle(!hasRolled || isLocked || !!roadBuildingInfo ? '#555' : '#27ae60')}>
-                ✅ 结束回合
-              </button>
-              {hasRolled && !isLocked && (
-                <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6, lineHeight: 1.6 }}>
-                  点击空顶点建定居点<br />
-                  点击自己的定居点升城市<br />
-                  点击空边建道路
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{ padding: '16px 10px', textAlign: 'center', fontSize: 13, opacity: 0.7, lineHeight: 1.6 }}>
-              ⏳ 当前不是你的回合<br />无需操作，请等待...
-            </div>
-          )}
-        </div>
-
-        {/* 玩家交易 */}
-        <TradePanel
-          roomId={id!}
-          myPlayerId={you.playerId}
-          myResources={you.resources}
-          players={players}
-          tradeOffer={state.tradeOffer}
-          isMyTurn={isMyTurn}
-          hasRolled={!!hasRolled}
-          isLocked={isLocked}
-        />
-
-      </div>
-    </div>
-  </div>
-)
-}
-//
-// ============================================================
-// ✅ 新增：调试面板组件
-// ============================================================
-function DebugPanel({
-  resources,
-  onAdjust,
-  onApply,
-  onReset,
-  onSetAll,
-  onClose,
-}: {
-  resources: PlayerResources
-  onAdjust: (resource: ResourceType, delta: number) => void
-  onApply: () => void
-  onReset: () => void
-  onSetAll: (amount: number) => void
-  onClose: () => void
-}) {
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 80,
-      right: 20,
-      background: 'rgba(0, 0, 0, 0.95)',
-      border: '2px solid #f39c12',
-      borderRadius: 12,
-      padding: 20,
-      minWidth: 300,
-      maxWidth: 350,
-      zIndex: 10000,
-      color: '#fff',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
-    }}>
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        marginBottom: 16,
-        paddingBottom: 12,
-        borderBottom: '2px solid #f39c12',
-      }}>
-        <h3 style={{ margin: 0, fontSize: 16, color: '#f39c12' }}>
-          🛠️ 调试面板
-        </h3>
-        <button 
-          onClick={onClose}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: '#fff',
-            fontSize: 20,
-            cursor: 'pointer',
-            padding: 0,
-            width: 24,
-            height: 24,
-          }}
-        >
-          ✕
-        </button>
-      </div>
-
-      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 12 }}>
-        快捷键: <kbd style={{ 
-          background: '#333', 
-          padding: '2px 6px', 
-          borderRadius: 4,
-          border: '1px solid #555'
-        }}>Ctrl+Shift+D</kbd>
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ 
-          display: 'flex', 
-          gap: 6, 
-          marginBottom: 12,
-          flexWrap: 'wrap',
-        }}>
-          <button 
-            onClick={() => onSetAll(5)}
-            style={debugBtnStyle('#27ae60')}
-          >
-            全部设为 5
-          </button>
-          <button 
-            onClick={() => onSetAll(10)}
-            style={debugBtnStyle('#2980b9')}
-          >
-            全部设为 10
-          </button>
-          <button 
-            onClick={onReset}
-            style={debugBtnStyle('#e74c3c')}
-          >
-            全部清零
-          </button>
-        </div>
-
-        {ALL_RESOURCES.map(key => (
-          <div key={key} style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 10,
-            background: 'rgba(255,255,255,0.05)',
-            borderRadius: 6,
-            padding: '8px 10px',
-          }}>
-            <span style={{ fontSize: 13, minWidth: 80 }}>
-              {RESOURCE_EMOJI[key]} {RESOURCE_LABELS[key]}
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button 
-                onClick={() => onAdjust(key, -1)}
-                style={smallBtn}
-              >
-                －
-              </button>
-              <span style={{ 
-                minWidth: 40, 
-                textAlign: 'center', 
-                fontWeight: 'bold',
-                fontSize: 15,
-              }}>
-                {resources[key]}
-              </span>
-              <button 
-                onClick={() => onAdjust(key, 1)}
-                style={smallBtn}
-              >
-                ＋
-              </button>
-              <button 
-                onClick={() => onAdjust(key, 5)}
-                style={{
-                  ...smallBtn,
-                  width: 36,
-                  fontSize: 12,
-                }}
-              >
-                +5
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <button 
-        onClick={onApply}
-        style={{
-          ...btnStyle('#f39c12'),
-          marginBottom: 0,
-        }}
-      >
-        ✅ 应用修改
-      </button>
-
-      <div style={{ 
-        fontSize: 11, 
-        opacity: 0.5, 
-        marginTop: 12,
-        textAlign: 'center',
-      }}>
-        ⚠️ 仅用于开发测试
       </div>
     </div>
   )
 }
 
-
-// ============================================================
-// ✅ 新增：抽卡动画组件
-// ============================================================
-function DrawCardModal({
-  isDrawing,
-  drawnCard,
-  onClose,
-}: {
-  isDrawing: boolean
-  drawnCard: DevCardType | null
-  onClose: () => void
-}) {
-  const TOTAL_CARDS = 20
-  const FAN_ANGLE = 80
-  const RADIUS = 500
-  const HOVER_DISTANCE = 45
-  const NEIGHBOR_SPACING = 1.5
-
-  const [hoveredIndex, setHoveredIndex] = useState<number>(-1)
-  const [selectedIndex, setSelectedIndex] = useState<number>(-1)
-  const [activeCards, setActiveCards] = useState<number[]>(() =>
-    Array.from({ length: TOTAL_CARDS }, (_, i) => i)
-  )
-  const [revealed, setRevealed] = useState(false)
-
-  useEffect(() => {
-    if (drawnCard && selectedIndex >= 0) {
-      const timer = setTimeout(() => setRevealed(true), 600)
-      return () => clearTimeout(timer)
-    }
-  }, [drawnCard, selectedIndex])
-
-  const getCardTransform = (
-    displayIndex: number,
-    totalActive: number,
-    isHovered: boolean,
-    hoveredDisplayIndex: number
-  ) => {
-    const cardSpacing = FAN_ANGLE / (totalActive - 1)
-    let angleIndex = displayIndex
-    if (hoveredDisplayIndex >= 0 && displayIndex !== hoveredDisplayIndex) {
-      const distance = Math.abs(displayIndex - hoveredDisplayIndex)
-      if (distance === 1) {
-        const direction = displayIndex < hoveredDisplayIndex ? -1 : 1
-        angleIndex += direction * (NEIGHBOR_SPACING - 1)
-      }
-    }
-    const angle = angleIndex * cardSpacing - FAN_ANGLE / 2
-    const radian = (angle * Math.PI) / 180
-    let x = Math.sin(radian) * RADIUS
-    let y = -Math.cos(radian) * RADIUS + RADIUS
-    if (isHovered) {
-      x += Math.sin(radian) * HOVER_DISTANCE
-      y += -Math.cos(radian) * HOVER_DISTANCE
-    }
-    const rotation = angle * 0.8
-    const scale = isHovered ? 1.15 : 1
-    return { x, y, rotation, scale }
-  }
-
-  const handleSelectCard = (originalIndex: number) => {
-    if (selectedIndex >= 0 || !isDrawing) return
-    setSelectedIndex(originalIndex)
-    setActiveCards(prev => prev.filter(i => i !== originalIndex))
-    setHoveredIndex(-1)
-  }
-
-  const cardInfo: Record<DevCardType, { icon: string; label: string; desc: string }> = {
-    knight:         { icon: '⚔️',  label: DEV_CARD_LABELS['knight'],         desc: DEV_CARD_DESC['knight'] },
-    victory_point:  { icon: '🏆',  label: DEV_CARD_LABELS['victory_point'],  desc: DEV_CARD_DESC['victory_point'] },
-    road_building:  { icon: '🛣️', label: DEV_CARD_LABELS['road_building'],  desc: DEV_CARD_DESC['road_building'] },
-    year_of_plenty: { icon: '🌟',  label: DEV_CARD_LABELS['year_of_plenty'], desc: DEV_CARD_DESC['year_of_plenty'] },
-    monopoly:       { icon: '💰',  label: DEV_CARD_LABELS['monopoly'],       desc: DEV_CARD_DESC['monopoly'] },
-  }
-
-  const totalActive = activeCards.length
-
-  return (
-    <div style={{
-      ...modalBox,
-      minWidth: 520,
-      minHeight: 440,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'flex-start',
-      textAlign: 'center',
-      overflow: 'hidden',
-      position: 'relative',
-      padding: '20px 20px 0',
-    }}>
-      <style>{`
-        @keyframes cardSelectAnim {
-          0%   { transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(1.15); }
-          40%  { transform: translate(0px, -160px) rotate(0deg) scale(1.25); }
-          100% { transform: translate(0px, -200px) rotate(0deg) scale(1.3); }
-        }
-        @keyframes cardFlipAnim {
-          0%   { transform: rotateY(0deg); }
-          100% { transform: rotateY(180deg); }
-        }
-        @keyframes resultFadeIn {
-          0%   { opacity: 0; transform: translateY(16px); }
-          100% { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
-
-      <h3 style={{ margin: '0 0 10px', fontSize: 17, color: '#f0e6d3' }}>
-        {selectedIndex < 0
-          ? '🎴 点击一张牌抽取发展卡'
-          : revealed
-          ? '🎉 抽卡结果'
-          : '⏳ 等待结果...'}
-      </h3>
-
-      {/* 扇形牌区 */}
-      <div style={{
-        position: 'relative',
-        width: '100%',
-        height: 260,
-        display: 'flex',
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-        perspective: '1200px',
-      }}>
-        {/* 未选中的牌 */}
-        {Array.from({ length: TOTAL_CARDS }, (_, originalIndex) => {
-          const displayIndex = activeCards.indexOf(originalIndex)
-          if (displayIndex < 0) return null
-          const hoveredDisplayIndex = hoveredIndex >= 0 ? activeCards.indexOf(hoveredIndex) : -1
-          const isHovered = hoveredIndex === originalIndex
-          const { x, y, rotation, scale } = getCardTransform(displayIndex, totalActive, isHovered, hoveredDisplayIndex)
-          return (
-            <div
-              key={originalIndex}
-              onMouseEnter={() => { if (selectedIndex < 0) setHoveredIndex(originalIndex) }}
-              onMouseLeave={() => setHoveredIndex(-1)}
-              onClick={() => handleSelectCard(originalIndex)}
-              style={{
-                position: 'absolute',
-                width: 80,
-                height: 115,
-                cursor: selectedIndex < 0 ? 'pointer' : 'default',
-                zIndex: originalIndex,
-                transform: `translate(${x}px, ${y}px) rotate(${rotation}deg) scale(${scale})`,
-                transition: 'transform 0.25s cubic-bezier(0.34,1.56,0.64,1)',
-                transformOrigin: 'center bottom',
-              }}
-            >
-              <div style={{
-                width: '100%', height: '100%',
-                borderRadius: 8,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                boxShadow: isHovered ? '0 8px 25px rgba(0,0,0,0.55)' : '0 3px 12px rgba(0,0,0,0.35)',
-                border: '2px solid rgba(255,255,255,0.3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
-              }}>
-                <div style={{ fontSize: 26 }}>🎴</div>
-                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.8)', marginTop: 4, fontWeight: 'bold' }}>卡坦岛</div>
-              </div>
-            </div>
-          )
-        })}
-
-        {/* 选中的牌（飞起 + 翻牌动画） */}
-        {selectedIndex >= 0 && (() => {
-          const { x: sx, y: sy, rotation: sr } = getCardTransform(
-            Math.floor(TOTAL_CARDS / 2), TOTAL_CARDS, false, -1
-          )
-          return (
-            <div
-              style={{
-                position: 'absolute',
-                width: 80,
-                height: 115,
-                zIndex: 1000,
-                transformOrigin: 'center bottom',
-                ['--tx' as any]: `${sx}px`,
-                ['--ty' as any]: `${sy}px`,
-                ['--tr' as any]: `${sr}deg`,
-                animation: 'cardSelectAnim 0.8s cubic-bezier(0.4,0,0.2,1) forwards',
-              }}
-            >
-              <div style={{
-                width: '100%', height: '100%',
-                position: 'relative',
-                transformStyle: 'preserve-3d',
-                animation: revealed ? 'cardFlipAnim 0.7s 0.1s cubic-bezier(0.4,0,0.2,1) forwards' : undefined,
-              }}>
-                {/* 牌背 */}
-                <div style={{
-                  position: 'absolute', width: '100%', height: '100%',
-                  backfaceVisibility: 'hidden',
-                  borderRadius: 8,
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-                  border: '2px solid rgba(255,255,255,0.4)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
-                }}>
-                  <div style={{ fontSize: 26 }}>🎴</div>
-                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.8)', marginTop: 4, fontWeight: 'bold' }}>卡坦岛</div>
-                </div>
-                {/* 牌面 */}
-                {drawnCard && (
-                  <div style={{
-                    position: 'absolute', width: '100%', height: '100%',
-                    backfaceVisibility: 'hidden',
-                    transform: 'rotateY(180deg)',
-                    borderRadius: 8,
-                    background: 'white',
-                    boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-                    border: '2px solid #f39c12',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
-                    padding: 6,
-                  }}>
-                    <div style={{ fontSize: 28 }}>{cardInfo[drawnCard].icon}</div>
-                    <div style={{ fontSize: 9, fontWeight: 'bold', color: '#2c3e50', marginTop: 4, textAlign: 'center', lineHeight: 1.3 }}>
-                      {cardInfo[drawnCard].label}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })()}
-      </div>
-
-      {/* 结果展示区 */}
-      {revealed && drawnCard && (
-        <div style={{
-          animation: 'resultFadeIn 0.5s ease-out',
-          marginTop: 14,
-          padding: '12px 24px',
-          background: 'rgba(243,156,18,0.15)',
-          borderRadius: 10,
-          border: '2px solid #f39c12',
-          maxWidth: 340,
-          marginBottom: 16,
-        }}>
-          <div style={{ fontSize: 15, fontWeight: 'bold', color: '#f39c12', marginBottom: 6 }}>
-            恭喜！抽到了 {cardInfo[drawnCard].icon} {cardInfo[drawnCard].label}
-          </div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', lineHeight: 1.6 }}>
-            {cardInfo[drawnCard].desc}
-          </div>
-          <button onClick={onClose} style={{ ...btnStyle('#27ae60'), marginTop: 12 }}>
-            确定
-          </button>
-        </div>
-      )}
-
-      {/* 等待服务器响应 */}
-      {selectedIndex >= 0 && !revealed && (
-        <div style={{ marginTop: 10, fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 16 }}>
-          ⏳ 正在确认结果...
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ============================================================
 // ✅ 新增：港口渲染组件
@@ -1489,11 +1009,11 @@ function HexagonTile({
   const patternId = `hex-pattern-${uid}`
 
   const terrainImage: Record<string, string> = {
-    wood:   '/树林.png',
-    brick:  '/砖块.png',
-    ore:    '/石头.png',
-    wheat:  '/小麦.png',
-    sheep:  '/羊毛.png',
+    wood: '/树林.png',
+    brick: '/砖块.png',
+    ore: '/石头.png',
+    wheat: '/小麦.png',
+    sheep: '/羊毛.png',
     desert: '/沙漠.png',
   }
 
@@ -1507,7 +1027,7 @@ function HexagonTile({
 
   return (
     <g onClick={isRobberTarget ? onClick : undefined}
-       style={{ cursor: isRobberTarget ? 'pointer' : 'default' }}>
+      style={{ cursor: isRobberTarget ? 'pointer' : 'default' }}>
 
       <defs>
         <clipPath id={clipId}>
@@ -1886,20 +1406,6 @@ const btnStyle = (bg: string): React.CSSProperties => ({
   cursor: 'pointer',
   fontWeight: 'bold',
   marginBottom: 8,
-})
-
-// ✅ 新增：调试面板按钮样式
-const debugBtnStyle = (bg: string): React.CSSProperties => ({
-  flex: 1,
-  padding: '6px 8px',
-  background: bg,
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  fontSize: 11,
-  cursor: 'pointer',
-  fontWeight: 'bold',
-  whiteSpace: 'nowrap',
 })
 
 // ✅ 新增：小按钮样式

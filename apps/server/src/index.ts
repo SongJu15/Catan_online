@@ -48,7 +48,7 @@ import {
 } from "./trade";
 
 import type { ServerRoom, ServerPlayer } from "./types";
-
+import { calcBestTradeRate } from '@catan/shared'
 
 // ============================================================
 // 全局房间 Map
@@ -156,7 +156,7 @@ function buildGameState(room: ServerRoom): GameState {
     monopolyPending: room.monopolyPending,
     turnNumber: room.turnNumber,
     tradeOffer: room.tradeOffer,
-    devDeck: [...room.devCardDeck],
+    devCardDeckCount: room.devCardDeck?.length ?? 0,
   };
 }
 
@@ -171,39 +171,6 @@ function broadcastState(io: Server, room: ServerRoom) {
     io.to(p.socketId).emit(STATE_SYNC, payload);
   }
 }
-
-// ============================================================
-// 计算某玩家对某资源的真实交易比率
-// 优先级：2:1专属港 > 3:1通用港 > 4:1默认
-// ============================================================
-function calcTradeRate(
-  playerId: string,
-  resource: ResourceType,
-  board: Board
-): number {
-  let best = 4;
-
-  for (const port of board.ports) {
-    // 检查该港口的两个顶点，玩家是否在其中任意一个上有建筑
-    const hasBuilding = port.vertexIds.some(vId => {
-      const vertex = board.vertices.find(v => v.id === vId);
-      return vertex?.ownerPlayerId === playerId;
-    });
-
-    if (!hasBuilding) continue;
-
-    if (port.type === "any") {
-      // 3:1 通用港
-      best = Math.min(best, 3);
-    } else if (port.type === resource) {
-      // 2:1 专属港，直接返回最优
-      return 2;
-    }
-  }
-
-  return best;
-}
-
 
 
 // ============================================================
@@ -223,10 +190,8 @@ function calcLongestRoad(playerId: string, board: Board): number {
   // 构建邻接表：顶点 -> 该玩家拥有的相邻顶点
   const adj = new Map<string, Set<string>>();
   for (const e of edges) {
-    // 检查两端顶点是否被其他玩家的建筑阻断
     const vFrom = board.vertices.find(v => v.id === e.fromVertexId)!;
     const vTo = board.vertices.find(v => v.id === e.toVertexId)!;
-    // 如果顶点有建筑且不是自己的，则该顶点阻断道路
     const fromBlocked = !!vFrom.ownerPlayerId && vFrom.ownerPlayerId !== playerId;
     const toBlocked = !!vTo.ownerPlayerId && vTo.ownerPlayerId !== playerId;
 
@@ -236,31 +201,41 @@ function calcLongestRoad(playerId: string, board: Board): number {
     if (!toBlocked) adj.get(e.toVertexId)!.add(e.fromVertexId);
   }
 
-  // DFS 求最长路径（允许重复顶点但不允许重复边）
+  const totalEdges = edges.length; // 该玩家总边数，用于剪枝上界
   let maxLen = 0;
-  const edgeSet = new Set(edges.map(e => [e.fromVertexId, e.toVertexId].sort().join("_")));
 
-  function dfs(cur: string, visited: Set<string>): number {
-    let best = 0;
+  function dfs(cur: string, visited: Set<string>, curLen: number): void {
+    // ✅ 剪枝：当前长度 + 剩余未走边数 不可能超过 maxLen，直接返回
+    const remaining = totalEdges - visited.size;
+    if (curLen + remaining <= maxLen) return;
+
+    // 更新最大值
+    if (curLen > maxLen) maxLen = curLen;
+
     const neighbors = adj.get(cur) ?? new Set();
     for (const nb of neighbors) {
       const eKey = [cur, nb].sort().join("_");
       if (!visited.has(eKey)) {
         visited.add(eKey);
-        const len = 1 + dfs(nb, visited);
-        if (len > best) best = len;
+        dfs(nb, visited, curLen + 1);
         visited.delete(eKey);
       }
     }
-    return best;
   }
 
-  for (const startV of adj.keys()) {
-    const len = dfs(startV, new Set());
-    if (len > maxLen) maxLen = len;
+  // ✅ 优先从"度为奇数"的端点出发（最长路的起点必然是端点）
+  // 若不存在奇数度节点（全是环），则从所有节点出发
+  const vertices = [...adj.keys()];
+  const oddDegreeVertices = vertices.filter(v => (adj.get(v)?.size ?? 0) % 2 === 1);
+  const startVertices = oddDegreeVertices.length > 0 ? oddDegreeVertices : vertices;
+
+  for (const startV of startVertices) {
+    dfs(startV, new Set(), 0);
   }
+
   return maxLen;
 }
+
 
 // ============================================================
 // 更新最长道路称号
@@ -579,7 +554,6 @@ io.on("connection", (socket: Socket) => {
     const room = rooms.get(payload.roomId);
     if (!room) { callback({ error: "房间不存在" }); return; }
     // ✅ 修复：游戏已开始时，检查是否是老玩家重连
-    if (room.phase !== "lobby") { callback({ error: "游戏已开始" }); return; }
     if (room.phase !== "lobby") { callback({ error: "游戏已开始" }); return; }
     if (room.players.length >= 6) { callback({ error: "房间已满" }); return; }
 
@@ -1094,8 +1068,12 @@ io.on("connection", (socket: Socket) => {
     sendError(socket, "给出和换取的资源不能相同"); return;
   }
 
-  // ── 服务端自己计算真实 rate，不信任前端 ──────────────────
-  const serverRate = calcTradeRate(player.playerId, payload.give, room.board);
+  const serverRate = calcBestTradeRate(
+  player.playerId,
+  payload.give,
+  room.board.ports,
+  room.board.vertices
+)
 
   const cost = emptyResources();
   cost[payload.give] = serverRate;
