@@ -86,6 +86,8 @@ interface TradePanelProps {
   isMyTurn: boolean
   hasRolled: boolean
   isLocked: boolean
+  forceOpen?: boolean   // 新增：外部强制打开弹窗
+  onClose?: () => void  // 新增：关闭回调
 }
 
 // ============================================================
@@ -100,10 +102,19 @@ export default function TradePanel({
   isMyTurn,
   hasRolled,
   isLocked,
+  forceOpen,
+  onClose,
 }: TradePanelProps) {
   const [open, setOpen] = useState(false)
 
-  const iAmOfferer  = tradeOffer?.fromPlayerId === myPlayerId
+  // 受外部控制
+  const isOpen = forceOpen ?? open
+  const handleClose = () => {
+    setOpen(false)
+    onClose?.()
+  }
+
+  const iAmOfferer = tradeOffer?.fromPlayerId === myPlayerId
   const iAmReceiver = !!tradeOffer && tradeOffer.fromPlayerId !== myPlayerId
 
   const canInitiate = isMyTurn && hasRolled && !isLocked && !tradeOffer
@@ -114,6 +125,26 @@ export default function TradePanel({
   if (iAmOfferer) { btnLabel = '📋 查看交易状态'; btnColor = '#e67e22' }
   if (iAmReceiver && tradeOffer?.status === 'pending') { btnLabel = '📩 有交易邀约！'; btnColor = '#e74c3c' }
 
+  // forceOpen 模式：只渲染弹窗，不渲染面板按钮
+  if (forceOpen !== undefined) {
+    return isOpen ? (
+      <ModalOverlay>
+        <TradeModal
+          roomId={roomId}
+          myPlayerId={myPlayerId}
+          myResources={myResources}
+          players={players}
+          tradeOffer={tradeOffer}
+          iAmOfferer={iAmOfferer}
+          iAmReceiver={iAmReceiver}
+          canInitiate={canInitiate}
+          onClose={handleClose}
+        />
+      </ModalOverlay>
+    ) : null
+  }
+
+  // 默认模式：渲染面板 + 弹窗
   return (
     <>
       <div style={panelStyle}>
@@ -134,13 +165,13 @@ export default function TradePanel({
           <div style={hintText}>
             {isLocked ? '⚠️ 当前阶段无法交易'
               : !isMyTurn ? '⏳ 等待当前玩家发起交易'
-              : !hasRolled ? '🎲 请先掷骰子'
-              : ''}
+                : !hasRolled ? '🎲 请先掷骰子'
+                  : ''}
           </div>
         )}
       </div>
 
-      {open && (
+      {isOpen && (
         <ModalOverlay>
           <TradeModal
             roomId={roomId}
@@ -151,13 +182,14 @@ export default function TradePanel({
             iAmOfferer={iAmOfferer}
             iAmReceiver={iAmReceiver}
             canInitiate={canInitiate}
-            onClose={() => setOpen(false)}
+            onClose={handleClose}
           />
         </ModalOverlay>
       )}
     </>
   )
 }
+
 
 // ============================================================
 // 弹窗内容
@@ -176,11 +208,11 @@ function TradeModal({
   canInitiate: boolean
   onClose: () => void
 }) {
-  const [offer,   setOffer]   = useState<PlayerResources>(emptyRes())
+  const [offer, setOffer] = useState<PlayerResources>(emptyRes())
   const [request, setRequest] = useState<PlayerResources>(emptyRes())
   const { pos, onMouseDown } = useDraggable()
 
-  const offerTotal   = totalRes(offer)
+  const offerTotal = totalRes(offer)
   const requestTotal = totalRes(request)
   const canSendOffer = canInitiate && offerTotal > 0 && requestTotal > 0
 
@@ -198,9 +230,12 @@ function TradeModal({
     tradeOffer && socket.emit(ACTION_TRADE_CONFIRM, { roomId, tradeId: tradeOffer.tradeId, targetPlayerId })
 
   const handleCancel = () => {
-    tradeOffer && socket.emit(ACTION_TRADE_CANCEL, { roomId, tradeId: tradeOffer.tradeId })
+    if (tradeOffer) {
+      socket.emit(ACTION_TRADE_CANCEL, { roomId, tradeId: tradeOffer.tradeId })
+    }
     onClose()
   }
+
 
   const boxStyle: React.CSSProperties = {
     ...modalBox,
@@ -339,7 +374,7 @@ function OffererView({
       {Object.entries(tradeOffer.responses).map(([pid, status]) => {
         const p = players.find(pl => pl.playerId === pid)
         if (!p) return null
-        const icon  = status === 'accepted' ? '✅' : status === 'rejected' ? '❌' : '⏳'
+        const icon = status === 'accepted' ? '✅' : status === 'rejected' ? '❌' : '⏳'
         const label = status === 'accepted' ? '已接受' : status === 'rejected' ? '已拒绝' : '等待中'
         return (
           <div key={pid} style={responseRow(p.color)}>
@@ -386,7 +421,7 @@ function ReceiverView({
   onReject: () => void
   onClose: () => void
 }) {
-  const offerer   = players.find(p => p.playerId === tradeOffer.fromPlayerId)
+  const offerer = players.find(p => p.playerId === tradeOffer.fromPlayerId)
   const canAfford = ALL_RESOURCES.every(r => myResources[r] >= tradeOffer.request[r])
 
   if (tradeOffer.status === 'confirmed') {
@@ -469,7 +504,7 @@ function TradeOfferSummary({
   receiverView?: boolean
 }) {
   const giveRes = receiverView ? request : offer
-  const getRes  = receiverView ? offer   : request
+  const getRes = receiverView ? offer : request
 
   return (
     <div style={offerBox}>
@@ -512,7 +547,7 @@ function ResourceEditor({
   cap: 'have' | 'none'
 }) {
   const adjust = (key: ResourceType, delta: number) => {
-    const max  = cap === 'have' ? myResources[key] : 99
+    const max = cap === 'have' ? myResources[key] : 99
     const next = Math.max(0, Math.min(max, value[key] + delta))
     onChange({ ...value, [key]: next })
   }

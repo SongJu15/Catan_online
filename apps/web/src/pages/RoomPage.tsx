@@ -3,8 +3,8 @@ import { useLocation, useParams, useNavigate } from 'react-router-dom'
 import socket from '../socket'
 import { STATE_SYNC, PLAYER_READY, GAME_START } from '@catan/shared'
 import type { StateSyncPayload } from '@catan/shared'
+import './RoomPage.css'
 
-// ✅ 重连逻辑：抽成独立函数，挂载时和 connect 事件都能调用
 function tryReconnect(
   navigate: ReturnType<typeof useNavigate>,
   setSyncData: (d: StateSyncPayload) => void,
@@ -27,13 +27,15 @@ function tryReconnect(
       }
       setIsConnected(true)
       setSyncData(resp)
-      // ✅ 根据游戏阶段决定跳转到哪个页面
       if (resp.state.phase !== 'lobby') {
         navigate(`/game/${savedRoomId}`, { state: resp })
       }
     }
   )
 }
+
+// 玩家颜色列表
+const PLAYER_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c']
 
 export default function RoomPage() {
   const { id } = useParams()
@@ -44,17 +46,14 @@ export default function RoomPage() {
     (location.state as StateSyncPayload) ?? null
   )
   const [isConnected, setIsConnected] = useState(socket.connected)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    // ✅ 修复：没有 state 时，先尝试从 sessionStorage 重连，而不是直接跳回首页
     if (!syncData) {
       if (socket.connected) {
-        // socket 已连接，直接尝试重连
         tryReconnect(navigate, setSyncData, setIsConnected)
       }
-      // 如果 socket 还没连接，等 connect 事件触发后再重连（见下面的 handleConnect）
     } else {
-      // 正常进入房间，存身份到 sessionStorage
       sessionStorage.setItem('catan_room_id', id!)
       sessionStorage.setItem('catan_player_id', syncData.you.playerId)
     }
@@ -62,18 +61,10 @@ export default function RoomPage() {
     const handleStateSync = (payload: StateSyncPayload) => {
       setSyncData(payload)
       if (payload.state.phase !== 'lobby') {
-        console.log('🎮 游戏开始！阶段:', payload.state.phase)
         navigate(`/game/${id}`, { state: payload })
       }
     }
-
-    const handleDisconnect = () => {
-      setIsConnected(false)
-    }
-
-    // ✅ 修复：connect 事件用于 socket 断线重连后恢复身份
-    //    刷新页面时 socket 已经是 connected，不会走这里
-    //    断线重连后才会走这里
+    const handleDisconnect = () => setIsConnected(false)
     const handleConnect = () => {
       setIsConnected(true)
       tryReconnect(navigate, setSyncData, setIsConnected)
@@ -90,17 +81,21 @@ export default function RoomPage() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ✅ 修复：重连中时显示加载状态，而不是直接返回 null
+  // 重连中
   if (!syncData) {
     return (
-      <div style={{ maxWidth: 500, margin: '60px auto', fontFamily: 'sans-serif', textAlign: 'center' }}>
-        <p>⏳ 正在重连中...</p>
+      <div className="room-page">
+        <div className="room-container" style={{ textAlign: 'center', paddingTop: 80 }}>
+          <div className="reconnect-spinner">⏳</div>
+          <p style={{ color: '#f0e6d3', fontSize: 18 }}>正在重连中...</p>
+        </div>
       </div>
     )
   }
 
   const { you, state } = syncData
   const isHost = state.hostPlayerId === you.playerId
+  const myPublicInfo = state.players.find(p => p.playerId === you.playerId)  // ← 加这行
   const allOthersReady = state.players
     .filter(p => p.playerId !== state.hostPlayerId)
     .every(p => p.isReady)
@@ -115,112 +110,130 @@ export default function RoomPage() {
     socket.emit(GAME_START, { roomId: id })
   }
 
+  const handleCopy = () => {
+    navigator.clipboard.writeText(id || '')
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const canStart = allOthersReady && state.players.length >= 2
+
   return (
-    <div style={{ maxWidth: 500, margin: '60px auto', fontFamily: 'sans-serif' }}>
+    <div className="room-page">
+      <div className="room-container">
 
-      {/* ✅ 断线提示横幅 */}
-      {!isConnected && (
-        <div style={{
-          background: '#fff3cd',
-          border: '1px solid #ffc107',
-          borderRadius: 6,
-          padding: '10px 16px',
-          marginBottom: 16,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-        }}>
-          <span>⚠️</span>
-          <span>网络连接断开，正在尝试重连...</span>
-        </div>
-      )}
+        <h1>🏝️ 房间大厅</h1>
 
-      <h1>🏝️ 房间大厅</h1>
+        {/* 断线提示 */}
+        {!isConnected && (
+          <div className="disconnect-banner">
+            <span>⚠️</span>
+            <span>网络连接断开，正在尝试重连...</span>
+          </div>
+        )}
 
-      <div style={{ background: '#f5f5f5', padding: 16, borderRadius: 8, marginBottom: 24 }}>
-        <p>房间号：<strong>{id}</strong></p>
-        <p>你的 ID：<strong>{you.playerId}</strong></p>
-        <p>状态：<strong>{state.phase}</strong></p>
-      </div>
-
-      <h2>👥 玩家列表（{state.players.length} 人）</h2>
-      <ul style={{ listStyle: 'none', padding: 0 }}>
-        {state.players.map((player) => (
-          <li
-            key={player.playerId}
-            style={{
-              padding: '10px 16px',
-              marginBottom: 8,
-              background: !player.isOnline
-                ? '#f8d7da'
-                : player.playerId === you.playerId ? '#d4edda' : '#fff',
-              border: '1px solid #ddd',
-              borderRadius: 6,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              opacity: player.isOnline ? 1 : 0.6,
-            }}
-          >
-            <span>
-              {player.playerId === state.hostPlayerId && '👑 '}
-              {player.name}
-              {player.playerId === you.playerId && ' （你）'}
-              {!player.isOnline && ' 🔴 离线中...'}
+        {/* 房间信息卡片 */}
+        <div className="room-info-card">
+          <div className="info-row">
+            <span className="label">🔑 房间号</span>
+            <span className="value">
+              {id}
+              <button className="copy-btn" onClick={handleCopy}>
+                {copied ? '✅ 已复制' : '复制'}
+              </button>
             </span>
-            {player.playerId !== state.hostPlayerId && player.isReady && player.isOnline && (
-              <span style={{ color: '#28a745', fontWeight: 'bold' }}>✓ 已准备</span>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      {isHost && (
-        <div style={{ marginTop: 24 }}>
-          <button
-            onClick={handleStartGame}
-            disabled={!allOthersReady || state.players.length < 2}
-            style={{
-              width: '100%',
-              padding: '12px 24px',
-              fontSize: 16,
-              fontWeight: 'bold',
-              color: '#fff',
-              background: allOthersReady && state.players.length >= 2 ? '#28a745' : '#6c757d',
-              border: 'none',
-              borderRadius: 6,
-              cursor: allOthersReady && state.players.length >= 2 ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {state.players.length < 2
-              ? '等待更多玩家...'
-              : allOthersReady
-              ? '🎮 开始游戏'
-              : '等待其他玩家准备...'}
-          </button>
+          </div>
+          <div className="info-row">
+            <span className="label">🎭 你的名称</span>
+            <span className="value">{myPublicInfo?.name ?? you.playerId}</span>
+          </div>
+          <div className="info-row">
+            <span className="label">📡 房间状态</span>
+            <span className="value">
+              <span className="status-badge">
+                {state.phase === 'lobby' ? '等待中' : state.phase}
+              </span>
+            </span>
+          </div>
         </div>
-      )}
 
-      {!isHost && (
-        <div style={{ marginTop: 24 }}>
-          <button
-            onClick={handleReady}
-            style={{
-              width: '100%',
-              padding: '12px 24px',
-              fontSize: 16,
-              fontWeight: 'bold',
-              color: '#fff',
-              background: isReady ? '#ffc107' : '#007bff',
-              border: 'none',
-              borderRadius: 6,
-              cursor: 'pointer',
-            }}
-          >
-            {isReady ? '✓ 已准备（点击取消）' : '准备'}
-          </button>
+        {/* 玩家列表 */}
+        <div className="players-section">
+          <h2>👥 玩家列表（{state.players.length} 人）</h2>
+          <div className="players-grid">
+            {state.players.map((player, index) => {
+              const isMe = player.playerId === you.playerId
+              const isPlayerHost = player.playerId === state.hostPlayerId
+              return (
+                <div
+                  key={player.playerId}
+                  className={`player-card ${isMe ? 'is-me' : ''} ${!player.isOnline ? 'offline' : ''}`}
+                >
+                  <div
+                    className="player-avatar"
+                    style={{ background: PLAYER_COLORS[index % PLAYER_COLORS.length] }}
+                  >
+                    {player.name?.[0]?.toUpperCase() ?? '?'}
+                  </div>
+                  <div className="player-info">
+                    <div className="player-name">
+                      {player.name}
+                      {isMe && <span className="badge">你</span>}
+                      {isPlayerHost && <span className="badge host">👑 房主</span>}
+                    </div>
+                    <div className="player-status">
+                      {!player.isOnline ? (
+                        <span className="status-text offline-text">🔴 离线中</span>
+                      ) : isPlayerHost ? (
+                        <span className="status-text">房主</span>
+                      ) : player.isReady ? (
+                        <span className="status-text ready">✓ 已准备</span>
+                      ) : (
+                        <span className="status-text not-ready">未准备</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
-      )}
+
+        {/* 操作按钮 */}
+        <div className="actions">
+          {isHost ? (
+            <button
+              className={`btn btn-large ${canStart ? 'btn-start' : 'btn-secondary'}`}
+              onClick={handleStartGame}
+              disabled={!canStart}
+            >
+              {state.players.length < 2
+                ? '⏳ 等待更多玩家...'
+                : canStart
+                ? '🎮 开始游戏'
+                : '⏳ 等待其他玩家准备...'}
+            </button>
+          ) : (
+            <button
+              className={`btn btn-large ${isReady ? 'btn-cancel' : 'btn-ready'}`}
+              onClick={handleReady}
+            >
+              {isReady ? '✓ 已准备（点击取消）' : '🙋 准备'}
+            </button>
+          )}
+        </div>
+
+        {/* 提示 */}
+        <div className="tips">
+          <p>💡 游戏提示</p>
+          <ul>
+            <li>将房间号分享给朋友，邀请他们加入</li>
+            <li>所有非房主玩家准备后，房主可开始游戏</li>
+            <li>游戏需要 2～4 名玩家</li>
+          </ul>
+        </div>
+
+      </div>
     </div>
   )
 }

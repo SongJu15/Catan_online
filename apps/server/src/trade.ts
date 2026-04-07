@@ -188,18 +188,20 @@ export function handleTradeConfirm(
   const toPrivate   = privates.get(req.targetPlayerId);
   if (!fromPrivate || !toPrivate) return { ok: false, error: "玩家不存在" };
 
-  // 二次校验：防止玩家在 accept 之后资源被其他操作消耗
   if (!hasEnough(fromPrivate.resources, trade.offer))
     return { ok: false, error: "你的资源不足" };
   if (!hasEnough(toPrivate.resources, trade.request))
     return { ok: false, error: "对方资源不足" };
 
-  // 执行资源交换：发起方给出 offer 换回 request，接受方反之
+  // 执行资源交换
   fromPrivate.resources = addRes(subRes(fromPrivate.resources, trade.offer), trade.request);
   toPrivate.resources   = addRes(subRes(toPrivate.resources, trade.request), trade.offer);
 
-  // 清空交易，本次交易结束
-  state.tradeOffer = null;
+  // ← 改动：先标记 confirmed + 写入 targetPlayerId，不立即清空
+  // 调用方（room.ts）广播一次 STATE_SYNC 后，再调用 clearTradeOffer 清空
+  trade.status = "confirmed";
+  trade.targetPlayerId = req.targetPlayerId;
+
   return { ok: true };
 }
 
@@ -221,7 +223,8 @@ export function handleTradeCancel(
   if (!trade || trade.tradeId !== req.tradeId) return { ok: false, error: "交易不存在" };
   if (trade.fromPlayerId !== playerId)         return { ok: false, error: "只有发起方可以取消" };
 
-  // 清空交易
-  state.tradeOffer = null;
+  // ← 改动：先标记 cancelled，不立即清空
+  trade.status = "cancelled";
+
   return { ok: true };
 }

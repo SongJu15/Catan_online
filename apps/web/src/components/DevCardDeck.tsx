@@ -9,12 +9,13 @@ const DEV_CARD_LABELS: Record<DevCardType, string> = {
   year_of_plenty: '🌟 资源丰收',
 }
 
-const DEV_CARD_COLORS: Record<DevCardType, string> = {
-  knight: '#e74c3c',
-  victory_point: '#f39c12',
-  road_building: '#8e44ad',
-  monopoly: '#16a085',
-  year_of_plenty: '#2980b9',
+// ✅ 新增：映射到你设计的精美图片路径
+const DEV_CARD_IMAGES: Record<DevCardType, string> = {
+  knight: '/发展卡/骑士卡.png',
+  victory_point: '/发展卡/得分卡.png',
+  road_building: '/发展卡/道路建设.png',
+  monopoly: '/发展卡/资源垄断.png',
+  year_of_plenty: '/发展卡/丰收年.png',
 }
 
 const DEV_CARD_DESC: Record<DevCardType, string> = {
@@ -47,7 +48,7 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
   }, [revealedCard, selectedPos])
 
   const fanAngle = Math.min(80, totalCards * 5)
-  const radius = 450
+  const radius = 480 // 稍微加大半径适应更大的卡牌
 
   const getCardTransform = (index: number, total: number, isHovered: boolean) => {
     const step = total > 1 ? fanAngle / (total - 1) : 0
@@ -66,7 +67,7 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
       const dist = Math.abs(index - hoveredIndex)
       if (dist === 1) {
         const dir = index > hoveredIndex ? 1 : -1
-        offsetX += dir * 18
+        offsetX += dir * 20
       }
     }
     return { x: x + offsetX, y: y + offsetY, rotation: angle }
@@ -83,35 +84,36 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
     : null
 
   return (
-    // 外层：半透明遮罩
+    // 外层：半透明遮罩 (加深一点，突出中间的高级感)
     <div style={{
       position: 'fixed', inset: 0,
-      background: 'rgba(0,0,0,0.6)',
+      background: 'rgba(0,0,0,0.75)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 9999,
+      backdropFilter: 'blur(4px)',
     }}>
-      {/* 内层：居中弹窗 —— 宽度改大，overflow visible */}
+      {/* 内层：居中弹窗 —— 改为复古暗色皮革/实木质感渐变 */}
       <div style={{
-        background: 'linear-gradient(135deg, #1a2a3a 0%, #2c3e50 100%)',
+        background: 'radial-gradient(circle at 50% 0%, #3a2a20 0%, #140d0a 100%)',
         borderRadius: 20,
         padding: '24px 24px 32px',
-        width: 760,           // ✅ 580 → 760
-        maxWidth: '95vw',     // ✅ 90vw → 95vw
+        width: 760,
+        maxWidth: '95vw',
         position: 'relative',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        overflow: 'visible',  // ✅ 新增，允许扇形牌超出弹窗边界
+        boxShadow: '0 20px 60px rgba(0,0,0,0.9), inset 0 2px 10px rgba(212,175,55,0.15)',
+        border: '1px solid #5c4322', // 暗金色边框
+        overflow: 'visible',
       }}>
         <style>{`
           @keyframes devCardFly {
             0%   { transform: translate(var(--sx), var(--sy)) rotate(var(--sr)) scale(1); }
-            40%  { transform: translate(0px, -180px) rotate(0deg) scale(1.25); }
-            100% { transform: translate(0px, -220px) rotate(0deg) scale(1.3); }
+            40%  { transform: translate(0px, -200px) rotate(0deg) scale(1.25); }
+            100% { transform: translate(0px, -240px) rotate(0deg) scale(1.35); }
           }
           @keyframes devCardFlip {
             0%   { transform: rotateY(0deg); }
@@ -125,25 +127,27 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
 
         {/* 标题 */}
         <div style={{
-          color: '#fff', fontSize: 22, fontWeight: 'bold',
-          textShadow: '2px 2px 8px rgba(0,0,0,0.5)',
+          color: '#e8d3a2', // 羊皮纸/淡金色
+          fontSize: 22, fontWeight: 'bold',
+          textShadow: '2px 2px 8px rgba(0,0,0,0.8)',
           textAlign: 'center',
           marginBottom: 16,
+          letterSpacing: 1,
         }}>
           {selectedPos === null
-            ? `🎴 点击一张牌抽取发展卡（剩余 ${totalCards} 张）`
+            ? `🎴 抽取发展卡（剩余 ${totalCards} 张）`
             : revealed
-              ? '🎉 抽卡结果揭晓！'
-              : '⏳ 正在确认结果...'}
+              ? '🎉 命运的指引...'
+              : '⏳ 正在揭晓...'}
         </div>
 
         {/* 扇形牌区 */}
         <div style={{
           position: 'relative',
           width: '100%',
-          height: 300,
+          height: 340, // 稍微加高，适应更大的卡牌
           perspective: 1500,
-          overflow: 'visible',  // ✅ 新增，牌可超出此区域
+          overflow: 'visible',
         }}>
           {/* 未选中的背面牌 */}
           {Array.from({ length: totalCards }, (_, i) => {
@@ -161,7 +165,7 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
                 onClick={() => handleCardClick(i)}
                 style={{
                   position: 'absolute', left: '50%', bottom: 0,
-                  width: 100, height: 145, marginLeft: -50,
+                  width: 120, height: 175, marginLeft: -60, // 放大卡牌尺寸
                   transform: `translate(${x}px, ${y}px) rotate(${rotation}deg) ${isHovered ? 'scale(1.12)' : 'scale(1)'}`,
                   transformOrigin: 'center bottom',
                   transition: 'all 0.25s cubic-bezier(0.34,1.56,0.64,1)',
@@ -179,7 +183,7 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
             <div
               style={{
                 position: 'absolute', left: '50%', bottom: 0,
-                width: 100, height: 145, marginLeft: -50,
+                width: 120, height: 175, marginLeft: -60,
                 transformOrigin: 'center bottom',
                 zIndex: 200,
                 ...({
@@ -203,29 +207,22 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
                 }}>
                   <CardBack highlighted />
                 </div>
-                {/* 牌面（翻转后显示） */}
+                {/* 牌面（翻转后显示真实的图片） */}
                 {revealedCard && (
                   <div style={{
                     position: 'absolute', inset: 0,
                     backfaceVisibility: 'hidden',
                     transform: 'rotateY(180deg)',
-                    background: DEV_CARD_COLORS[revealedCard],
-                    borderRadius: 12,
-                    border: '4px solid #ffd700',
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
-                    padding: 10,
-                    boxShadow: '0 12px 32px rgba(255,215,0,0.6)',
+                    borderRadius: 10, // 配合图片的圆角
+                    overflow: 'hidden', // 裁剪掉直角
+                    boxShadow: '0 15px 40px rgba(0,0,0,0.8), 0 0 30px rgba(212,175,55,0.5)', // 金色发光效果
+                    background: '#2a1f1a', // 图片未加载时的底色
                   }}>
-                    <div style={{ fontSize: 36, marginBottom: 6 }}>
-                      {DEV_CARD_LABELS[revealedCard].split(' ')[0]}
-                    </div>
-                    <div style={{
-                      fontSize: 12, color: '#fff', textAlign: 'center',
-                      fontWeight: 'bold', lineHeight: 1.3,
-                    }}>
-                      {DEV_CARD_LABELS[revealedCard].split(' ').slice(1).join(' ')}
-                    </div>
+                    <img 
+                      src={DEV_CARD_IMAGES[revealedCard]} 
+                      alt={DEV_CARD_LABELS[revealedCard]} 
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
+                    />
                   </div>
                 )}
               </div>
@@ -238,36 +235,32 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
           <div style={{
             marginTop: 16,
             animation: 'resultFadeIn 0.5s ease-out',
-            background: 'rgba(0,0,0,0.4)',
-            border: `2px solid ${DEV_CARD_COLORS[revealedCard]}`,
+            background: 'linear-gradient(180deg, rgba(40,30,20,0.9) 0%, rgba(20,15,10,0.9) 100%)',
+            border: '1px solid #d4af37', // 香槟金边框
             borderRadius: 14, padding: '16px 32px',
-            textAlign: 'center', color: '#fff',
+            textAlign: 'center', color: '#e8d3a2',
             width: '100%',
-            boxShadow: `0 0 40px ${DEV_CARD_COLORS[revealedCard]}66`,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.8), inset 0 0 20px rgba(212,175,55,0.15)',
           }}>
-            <div style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 8, color: '#ffd700' }}>
-              🎉 恭喜！抽到了
-            </div>
-            <div style={{
-              fontSize: 22, fontWeight: 'bold', marginBottom: 8,
-              color: DEV_CARD_COLORS[revealedCard],
-            }}>
+            <div style={{ fontSize: 22, fontWeight: 'bold', marginBottom: 8, color: '#d4af37', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
               {DEV_CARD_LABELS[revealedCard]}
             </div>
-            <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 16, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 14, opacity: 0.85, marginBottom: 16, lineHeight: 1.6 }}>
               {DEV_CARD_DESC[revealedCard]}
             </div>
             <button
               onClick={onClose}
               style={{
-                padding: '10px 32px', fontSize: 15,
-                background: DEV_CARD_COLORS[revealedCard],
-                color: '#fff', border: 'none', borderRadius: 8,
+                padding: '10px 40px', fontSize: 16,
+                background: 'linear-gradient(135deg, #d4af37 0%, #aa7c11 100%)', // 金色渐变按钮
+                color: '#1a1210', // 深色文字对比强烈
+                border: 'none', borderRadius: 8,
                 cursor: 'pointer', fontWeight: 'bold',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.4)',
+                textShadow: '0 1px 0 rgba(255,255,255,0.3)',
               }}
             >
-              收下！
+              收下卡牌
             </button>
           </div>
         )}
@@ -276,9 +269,9 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
         {selectedPos !== null && !revealed && (
           <div style={{
             marginTop: 16,
-            color: 'rgba(255,255,255,0.6)', fontSize: 14,
+            color: 'rgba(212,175,55,0.6)', fontSize: 14,
           }}>
-            ⏳ 等待服务器确认...
+            ⏳ 命运的齿轮正在转动...
           </div>
         )}
 
@@ -288,14 +281,20 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
             onClick={onClose}
             style={{
               marginTop: 16,
-              padding: '12px 36px', fontSize: 16,
-              background: '#e74c3c', color: '#fff',
-              border: 'none', borderRadius: 10,
+              padding: '10px 36px', fontSize: 15,
+              background: 'transparent', color: '#d4af37',
+              border: '1px solid #d4af37', borderRadius: 8,
               cursor: 'pointer', fontWeight: 'bold',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(212,175,55,0.1)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent'
             }}
           >
-            取消
+            暂不抽取
           </button>
         )}
 
@@ -304,24 +303,24 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
   )
 }
 
-/** 卡背组件 */
+/** 卡背组件：替换为真实的卡背图片 */
 function CardBack({ highlighted = false }: { highlighted?: boolean }) {
   return (
     <div style={{
       width: '100%', height: '100%',
-      borderRadius: 12,
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      border: highlighted ? '3px solid #ffd700' : '3px solid rgba(255,255,255,0.4)',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
+      borderRadius: 10, // 配合图片的圆角
+      overflow: 'hidden',
+      background: '#2a1f1a',
       boxShadow: highlighted
-        ? '0 8px 30px rgba(255,215,0,0.4)'
-        : '0 4px 16px rgba(0,0,0,0.4)',
+        ? '0 0 20px 4px rgba(212,175,55,0.6)' // 选中时发金光
+        : '0 4px 16px rgba(0,0,0,0.6)',
+      transition: 'box-shadow 0.3s',
     }}>
-      <div style={{ fontSize: 36 }}>🎴</div>
-      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.8)', marginTop: 6, fontWeight: 'bold' }}>
-        卡坦岛
-      </div>
+      <img 
+        src="/发展卡/发展卡.png" 
+        alt="卡背" 
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
+      />
     </div>
   )
 }

@@ -1196,42 +1196,58 @@ io.on("connection", (socket: Socket) => {
   });
 
   // ----------------------------------------------------------------
-  // 确认成交（发起方选择与某个已接受的玩家正式交换资源）
-  // ----------------------------------------------------------------
-  socket.on(ACTION_TRADE_CONFIRM, (req: TradeConfirmReq) => {
-    const room = rooms.get(req.roomId);
-    if (!room) return;
+// 确认成交（发起方选择与某个已接受的玩家正式交换资源）
+// ----------------------------------------------------------------
+socket.on(ACTION_TRADE_CONFIRM, (req: TradeConfirmReq) => {
+  const room = rooms.get(req.roomId);
+  if (!room) return;
 
-    const player = room.players.find(p => p.socketId === socket.id);
-    if (!player) return;
+  const player = room.players.find(p => p.socketId === socket.id);
+  if (!player) return;
 
-    // 用可写的 privates Map 执行资源交换
-    const privates = buildPrivatesMap(room.players);
-    const result = handleTradeConfirm(room, privates, player.playerId, req);
-    if (!result.ok) return socket.emit(GAME_ERROR, { message: result.error });
+  const privates = buildPrivatesMap(room.players);
+  const result = handleTradeConfirm(room, privates, player.playerId, req);
+  if (!result.ok) return socket.emit(GAME_ERROR, { message: result.error });
 
-    // 把 privates 里修改后的资源写回 room.players
-    syncPrivatesBack(room.players, privates);
+  syncPrivatesBack(room.players, privates);
 
-    // 成交后 tradeOffer 已清空，资源已更新，广播新状态
-    broadcastState(io, room);
-  });
+  // ← 改动：先广播 confirmed 状态，让客户端看到交易结果
+  broadcastState(io, room);
 
-  // ----------------------------------------------------------------
-  // 取消交易（发起方取消，tradeOffer 清空）
-  // ----------------------------------------------------------------
-  socket.on(ACTION_TRADE_CANCEL, (req: TradeCancelReq) => {
-    const room = rooms.get(req.roomId);
-    if (!room) return;
+  // ← 改动：3 秒后清空 tradeOffer，再广播一次
+  setTimeout(() => {
+    if (room.tradeOffer?.status === 'confirmed') {
+      room.tradeOffer = null;
+      broadcastState(io, room);
+    }
+  }, 3000);
+});
 
-    const player = room.players.find(p => p.socketId === socket.id);
-    if (!player) return;
+// ----------------------------------------------------------------
+// 取消交易（发起方取消，tradeOffer 清空）
+// ----------------------------------------------------------------
+socket.on(ACTION_TRADE_CANCEL, (req: TradeCancelReq) => {
+  const room = rooms.get(req.roomId);
+  if (!room) return;
 
-    const result = handleTradeCancel(room, player.playerId, req);
-    if (!result.ok) return socket.emit(GAME_ERROR, { message: result.error });
+  const player = room.players.find(p => p.socketId === socket.id);
+  if (!player) return;
 
-    broadcastState(io, room);
-  });
+  const result = handleTradeCancel(room, player.playerId, req);
+  if (!result.ok) return socket.emit(GAME_ERROR, { message: result.error });
+
+  // ← 改动：先广播 cancelled 状态，让客户端看到取消提示
+  broadcastState(io, room);
+
+  // ← 改动：3 秒后清空 tradeOffer，再广播一次
+  setTimeout(() => {
+    if (room.tradeOffer?.status === 'cancelled') {
+      room.tradeOffer = null;
+      broadcastState(io, room);
+    }
+  }, 3000);
+});
+
 
 
   // ----------------------------------------------------------

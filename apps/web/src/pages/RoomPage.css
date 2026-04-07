@@ -1,141 +1,173 @@
+/* ══════════════════════════════════════════
+   RoomPage — 等待大厅样式（背景图版）
+══════════════════════════════════════════ */
+
 .room-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 40px 20px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  width: 100%;
+  background-image: url('/background.png');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  padding: 80px 20px 40px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
+  position: relative;
+}
+
+/* 全局半透明遮罩，让文字更易读 */
+.room-page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0,0,0,0.2) 0%,
+    rgba(8,18,38,0.4) 100%
+  );
+  z-index: 0;
+  pointer-events: none;
 }
 
 .room-container {
-  max-width: 800px;
+  max-width: 720px;
   margin: 0 auto;
+  position: relative;
+  z-index: 1;
 }
 
 .room-container h1 {
-  color: white;
+  color: #ffe97a;
   text-align: center;
-  margin-bottom: 30px;
-  font-size: 2.5rem;
-  text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+  margin-bottom: 32px;
+  font-size: 2.2rem;
+  font-weight: 700;
+  text-shadow:
+    0 2px 4px rgba(0,0,0,0.6),
+    0 0 20px rgba(255,210,80,0.35);
+  letter-spacing: 0.05em;
 }
 
-/* 房间信息卡片 */
-.room-info-card {
-  background: white;
-  border-radius: 12px;
+/* ── 通用毛玻璃卡片 ── */
+.room-info-card,
+.players-section,
+.tips {
+  background: rgba(20, 40, 70, 0.3);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 210, 80, 0.18);
+  border-radius: 16px;
   padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+  box-shadow:
+    0 6px 32px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  color: #f0e6d3;
 }
 
+/* ── 房间信息行 ── */
 .info-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
-
-.info-row:last-child {
-  border-bottom: none;
-}
+.info-row:last-child { border-bottom: none; }
 
 .info-row .label {
-  color: #666;
+  color: rgba(240, 220, 150, 0.7);
   font-weight: 500;
+  font-size: 14px;
 }
 
 .info-row .value {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-weight: 600;
+  gap: 10px;
+  font-weight: 700;
+  color: #ffe97a;
+  font-size: 15px;
 }
 
 .copy-btn {
-  padding: 4px 12px;
-  background: #f0f0f0;
-  border: none;
+  padding: 3px 10px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
   border-radius: 6px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  color: #f0e6d3;
   transition: background 0.2s;
 }
-
-.copy-btn:hover {
-  background: #e0e0e0;
-}
+.copy-btn:hover { background: rgba(255,255,255,0.2); }
 
 .status-badge {
-  padding: 4px 12px;
-  background: #e3f2fd;
-  color: #1976d2;
+  padding: 3px 12px;
+  background: rgba(41,128,185,0.35);
+  border: 1px solid rgba(41,128,185,0.5);
+  color: #7ec8e3;
   border-radius: 12px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
-/* 玩家列表 */
-.players-section {
-  background: white;
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-}
-
+/* ── 玩家列表 ── */
 .players-section h2 {
   margin-top: 0;
-  margin-bottom: 20px;
-  color: #333;
+  margin-bottom: 18px;
+  color: #ffe97a;
+  font-size: 1.1rem;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
 
 .players-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 
 .player-card {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px;
-  border-radius: 8px;
-  border: 2px solid #f0f0f0;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
   transition: all 0.2s;
 }
 
 .player-card.is-me {
-  border-color: #667eea;
-  background: #f5f7ff;
+  border-color: rgba(255, 210, 80, 0.5);
+  background: rgba(255, 210, 80, 0.08);
 }
 
 .player-card.empty {
-  opacity: 0.5;
+  opacity: 0.4;
   border-style: dashed;
+  border-color: rgba(255,255,255,0.15);
 }
 
 .player-avatar {
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   font-weight: bold;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
 
 .empty-avatar {
-  background: #e0e0e0 !important;
-  color: #999;
+  background: rgba(255,255,255,0.1) !important;
+  color: rgba(255,255,255,0.3);
 }
 
-.player-info {
-  flex: 1;
-  min-width: 0;
-}
+.player-info { flex: 1; min-width: 0; }
 
 .player-name {
   font-weight: 600;
@@ -144,124 +176,157 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  color: #f0e6d3;
+  font-size: 14px;
 }
 
 .badge {
-  padding: 2px 8px;
-  background: #667eea;
+  padding: 1px 7px;
+  background: rgba(102,126,234,0.6);
   color: white;
-  border-radius: 10px;
-  font-size: 0.75rem;
+  border-radius: 8px;
+  font-size: 0.72rem;
 }
+.badge.host { background: rgba(245,158,11,0.7); }
 
-.badge.host {
-  background: #f59e0b;
-}
+.player-status { font-size: 0.85rem; }
+.status-text { color: rgba(240,230,211,0.5); }
+.status-text.ready { color: #34d399; font-weight: 600; }
+.status-text.not-ready { color: #f87171; }
 
-.player-status {
-  font-size: 0.9rem;
-}
-
-.status-text {
-  color: #999;
-}
-
-.status-text.ready {
-  color: #10b981;
-  font-weight: 600;
-}
-
-.status-text.not-ready {
-  color: #ef4444;
-}
-
-/* 错误提示 */
+/* ── 错误提示 ── */
 .error-message {
-  background: #fee2e2;
-  color: #dc2626;
+  background: rgba(220,38,38,0.2);
+  border: 1px solid rgba(220,38,38,0.45);
+  color: #fca5a5;
   padding: 12px 16px;
   border-radius: 8px;
   margin-bottom: 16px;
-  border-left: 4px solid #dc2626;
+  border-left: 3px solid #ef4444;
 }
 
-/* 按钮 */
-.actions {
-  margin-bottom: 24px;
-}
+/* ── 按钮 ── */
+.actions { margin-bottom: 20px; }
 
 .btn {
   padding: 12px 24px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.2s;
+  letter-spacing: 0.04em;
 }
 
 .btn-large {
   width: 100%;
-  padding: 16px;
-  font-size: 1.1rem;
+  padding: 15px;
+  font-size: 1.05rem;
 }
 
 .btn-primary {
-  background: #667eea;
+  background: linear-gradient(135deg, #667eea, #5568d3);
   color: white;
+  box-shadow: 0 4px 16px rgba(102,126,234,0.4);
 }
-
 .btn-primary:hover:not(:disabled) {
-  background: #5568d3;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 6px 20px rgba(102,126,234,0.55);
+  filter: brightness(1.1);
 }
 
 .btn-secondary {
-  background: #6b7280;
-  color: white;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #4b5563;
-}
-
-.btn:disabled {
-  opacity: 0.5;
+  background: rgba(20, 40, 70, 0.3);
+  border: 1px solid rgba(255, 210, 80, 0.5);   /* ← 加黄色边框 */
+  color: #ffffff;                                /* ← 字体颜色改回清晰 */
   cursor: not-allowed;
 }
 
-/* 提示信息 */
-.tips {
-  background: white;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(107,114,128,0.8);
 }
 
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── 等待提示 ── */
 .tips p {
-  margin: 0 0 12px 0;
+  margin: 0 0 10px 0;
   font-weight: 600;
-  color: #333;
+  color: rgba(255,220,130,0.85);
 }
-
 .tips ul {
   margin: 0;
-  padding-left: 20px;
-  color: #666;
+  padding-left: 18px;
+  color: rgba(240,230,211,0.65);
+}
+.tips li { margin-bottom: 6px; font-size: 14px; }
+
+/* ── 断线横幅 ── */
+.disconnect-banner {
+  background: rgba(255,193,7,0.2);
+  border: 1px solid rgba(255,193,7,0.45);
+  color: #fde68a;
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
 }
 
-.tips li {
-  margin-bottom: 8px;
-}
-
-/* 响应式 */
+/* ── 响应式 ── */
 @media (max-width: 768px) {
-  .players-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .room-container h1 {
-    font-size: 2rem;
-  }
+  .players-grid { grid-template-columns: 1fr; }
+  .room-container h1 { font-size: 1.7rem; }
+  .room-page { padding-top: 50px; }
+}
+
+/* 追加到 RoomPage.css 末尾 */
+
+.player-card.offline {
+  opacity: 0.5;
+}
+
+.offline-text {
+  color: #f87171;
+}
+
+.btn-start {
+  background: linear-gradient(135deg, #2ecc71, #27ae60);
+  color: white;
+  box-shadow: 0 4px 16px rgba(39,174,96,0.45);
+}
+.btn-start:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(39,174,96,0.6);
+  filter: brightness(1.1);
+}
+
+.btn-ready {
+  background: linear-gradient(135deg, #3498db, #2980b9);
+  color: white;
+  box-shadow: 0 4px 16px rgba(41,128,185,0.45);
+}
+.btn-ready:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.btn-cancel {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+  box-shadow: 0 4px 16px rgba(245,158,11,0.4);
+}
+.btn-cancel:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.reconnect-spinner {
+  font-size: 48px;
+  animation: spin 1.5s linear infinite;
+  display: inline-block;
+  margin-bottom: 16px;
 }

@@ -193,6 +193,7 @@ export interface TradeOffer {
   request: PlayerResources;
   responses: Record<string, "pending" | "accepted" | "rejected">;
   status: "pending" | "confirmed" | "cancelled";
+  targetPlayerId?: string;   // ← 新增
 }
 
 

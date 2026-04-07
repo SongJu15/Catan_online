@@ -19,6 +19,7 @@ import TradePanel from '../components/TradePanel'
 import DevCardDeck from '../components/DevCardDeck'
 import { calcBestTradeRate } from '@catan/shared'
 
+
 const RESOURCE_LABELS: Record<ResourceType, string> = {
   wood: '木材', brick: '砖块', ore: '矿石', wheat: '小麦', sheep: '羊毛',
 }
@@ -123,6 +124,20 @@ export default function GamePage() {
   const isDrawingRef = useRef(false)   // ✅ 新增这一行
   const prevDevCardCountRef = useRef<number>(0)
 
+  // 发展卡弹窗
+  const [showDevCardPanel, setShowDevCardPanel] = useState(false)
+  const [statusDrawerOpen, setStatusDrawerOpen] = useState(true)
+  const [rulesDrawerOpen, setRulesDrawerOpen] = useState(true)
+
+  const playerCardRef = useRef<HTMLDivElement>(null)
+  const [playerCardWidth, setPlayerCardWidth] = useState(160)
+
+  useEffect(() => {
+    if (playerCardRef.current) {
+      setPlayerCardWidth(playerCardRef.current.offsetWidth + 12)
+    }
+  }, [syncData])
+
   useEffect(() => {
     if (!syncData) { navigate('/'); return }
     socket.on(STATE_SYNC, (payload: StateSyncPayload) => {
@@ -162,6 +177,18 @@ export default function GamePage() {
     }
   }, [])
 
+  useEffect(() => {
+    const style = document.createElement('style')
+    style.textContent = `
+    @keyframes eventPulse {
+      0%, 100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+      50% { opacity: 0.92; transform: translate(-50%, 0) scale(1.025); }
+    }
+  `
+    document.head.appendChild(style)
+    return () => { document.head.removeChild(style) }
+  }, [])
+
   if (!syncData) return null
 
   const { you, state } = syncData
@@ -172,9 +199,9 @@ export default function GamePage() {
   } = state
 
   const isMyTurn = currentPlayerId === you.playerId
-  const currentPlayer = players.find(p => p.playerId === currentPlayerId)
   const myInfo = players.find(p => p.playerId === you.playerId)
   const myColor = myInfo?.color ?? '#888'
+
 
   // ✅ 全部改为派生值，不再用 useEffect 同步
   const iMustDiscard =
@@ -420,9 +447,18 @@ export default function GamePage() {
     <div style={{
       display: 'flex', flexDirection: 'column',
       height: '100vh', overflow: 'hidden',
-      fontFamily: 'sans-serif', background: '#1a2a3a', color: '#fff',
+      fontFamily: 'sans-serif',
+      // 👇 这里是修改的部分 👇
+      backgroundImage: "url('/海洋.png')",
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+      // 👆 修改结束 👆
+      color: '#fff',
       padding: 10, gap: 8, boxSizing: 'border-box',
     }}>
+
+
 
       {/* 错误提示 */}
       {errorMsg && (
@@ -432,17 +468,6 @@ export default function GamePage() {
           borderRadius: 8, zIndex: 9999, fontWeight: 'bold',
           boxShadow: '0 4px 12px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
         }}>⚠️ {errorMsg}</div>
-      )}
-
-      {/* 强盗移动提示 */}
-      {isMovingRobber && (
-        <div style={{
-          position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
-          background: '#e67e22', color: '#fff', padding: '10px 24px',
-          borderRadius: 8, zIndex: 9998, fontWeight: 'bold',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
-          pointerEvents: 'none',
-        }}>🗡️ 点击地图上的地块放置强盗（不能放在原位置）</div>
       )}
 
       {/* 游戏结束 */}
@@ -493,7 +518,9 @@ export default function GamePage() {
         <ModalOverlay>
           {modal === 'rob_player' && (
             <div style={modalBox}>
-              <h3 style={{ margin: '0 0 12px' }}>🗡️ 选择抢劫目标</h3>
+              <h3 style={{ margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                选择抢劫目标
+              </h3>
               <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.8 }}>该地块上有其他玩家，选择抢劫对象（或跳过）</p>
               {robTargets.map(t => (
                 <button key={t.playerId} onClick={() => handleRobPlayerConfirm(t.playerId)}
@@ -563,70 +590,230 @@ export default function GamePage() {
     ══════════════════════════════════════ */}
       <div style={{ display: 'flex', gap: 8, flex: '1 1 0', minHeight: 0 }}>
 
-        {/* ── 左列：标题栏 + 玩家列表 ── */}
-        <div style={{
-          width: 200, flexShrink: 0,
-          display: 'flex', flexDirection: 'column', gap: 6,
-          overflowY: 'auto',
-        }}>
+        {/* ── 玩家头像覆盖层（固定定位，覆盖在整个页面上） ── */}
+        <>
+          {/* ── 特殊事件横幅（屏幕中间偏上） ── */}
+          {(iMustDiscard || isMovingRobber || isRoadBuilding) && (
+            <div style={{
+              position: 'fixed',
+              top: '28%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 9997,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 10,
+              pointerEvents: 'none',
+            }}>
+              {iMustDiscard && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '14px 32px',
+                  background: 'linear-gradient(135deg, #c0392b, #e74c3c)',
+                  borderRadius: 14,
+                  boxShadow: '0 6px 28px rgba(231,76,60,0.65), 0 0 0 1px rgba(255,255,255,0.15)',
+                  fontSize: 15, fontWeight: 'bold', color: '#fff',
+                  whiteSpace: 'nowrap',
+                  animation: 'eventPulse 1.5s ease-in-out infinite',
+                }}>
+                  <span style={{ fontSize: 24 }}>⚠️</span>
+                  <span>你的手牌超过 7 张，必须丢弃资源！</span>
+                </div>
+              )}
+              {isMovingRobber && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '14px 32px',
+                  background: 'linear-gradient(135deg, #d35400, #e67e22)',
+                  borderRadius: 14,
+                  boxShadow: '0 6px 28px rgba(230,126,34,0.65), 0 0 0 1px rgba(255,255,255,0.15)',
+                  fontSize: 15, fontWeight: 'bold', color: '#fff',
+                  whiteSpace: 'nowrap',
+                }}>
+                  <span>点击地图上的地块放置强盗（不能放在原位置）</span>
+                </div>
+              )}
+              {isRoadBuilding && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '14px 32px',
+                  background: 'linear-gradient(135deg, #6c3483, #9b59b6)',
+                  borderRadius: 14,
+                  boxShadow: '0 6px 28px rgba(155,89,182,0.65), 0 0 0 1px rgba(255,255,255,0.15)',
+                  fontSize: 15, fontWeight: 'bold', color: '#fff',
+                  whiteSpace: 'nowrap',
+                }}>
+                  <span style={{ fontSize: 24 }}>🛣️</span>
+                  <span>道路建设 — 免费建造道路（剩余 <strong>{roadBuildingInfo!.roadsLeft}</strong> 条）</span>
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* 标题栏（移到左列顶部） */}
+          {/* ── 左侧状态抽屉 ── */}
           <div style={{
-            display: 'flex', flexDirection: 'column', gap: 4,
-            background: 'rgba(255,255,255,0.08)', padding: '8px 10px',
-            borderRadius: 10, flexShrink: 0,
+            position: 'fixed',
+            left: statusDrawerOpen ? 0 : -160,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 150,
+            transition: 'left 0.35s cubic-bezier(0.4,0,0.2,1)',
+            display: 'flex',
+            alignItems: 'center',
           }}>
-            <span style={{ fontSize: 15, fontWeight: 'bold' }}>🏝️ 卡坦岛</span>
-            <Tag color="rgba(255,255,255,0.15)">{getPhaseText(phase)}</Tag>
-            {currentPlayer && <Tag color={currentPlayer.color}>当前：{currentPlayer.name}</Tag>}
-            {isMyTurn && phase !== 'ended' && <Tag color="#27ae60">🎯 你的回合！</Tag>}
-            {diceResult && (
-              <Tag color="#f39c12">🎲 {diceResult[0]}+{diceResult[1]}={diceResult[0] + diceResult[1]}</Tag>
-            )}
-            {iMustDiscard && <Tag color="#e74c3c">⚠️ 需要丢牌！</Tag>}
-            {isMovingRobber && <Tag color="#e67e22">🗡️ 点击地块放强盗</Tag>}
-            {isRoadBuilding && <Tag color="#9b59b6">🛣️ 道路建设中（剩{roadBuildingInfo!.roadsLeft}条）</Tag>}
+            {/* 面板主体 */}
+            <div style={{
+              width: 160,
+              background: 'linear-gradient(160deg, rgba(15,30,55,0.96), rgba(8,18,35,0.96))',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(100,160,255,0.18)',
+              borderRight: 'none',
+              borderTopLeftRadius: 0,
+              borderBottomLeftRadius: 0,
+              borderTopRightRadius: 12,
+              borderBottomRightRadius: 12,
+              padding: '16px 14px 18px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 7,
+              boxShadow: '6px 0 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.07)',
+            }}>
+              {/* 标题 */}
+              <div style={{
+                fontSize: 15, fontWeight: 'bold',
+                color: 'rgba(160,210,255,0.85)',
+                letterSpacing: 1,
+                marginBottom: 6,
+                paddingLeft: 2,
+              }}>
+                ◈ 游戏状态
+              </div>
+
+              {/* 阶段 */}
+              <StatusRow icon="🎮" label={getPhaseText(phase)} color="#e8f4ff" />
+
+              {/* 骰子结果 */}
+              {diceResult && (
+                <StatusRow
+                  icon="🎲"
+                  label={`${diceResult[0]} + ${diceResult[1]} = ${diceResult[0] + diceResult[1]}`}
+                  color="#f5c842"
+                />
+              )}
+
+              {/* 回合数 */}
+              {turnNumber != null && (
+                <StatusRow icon="🔄" label={`第 ${turnNumber} 回合`} color="rgba(180,210,255,0.75)" />
+              )}
+
+              {/* 当前玩家 */}
+              {(() => {
+                const cur = players.find(p => p.playerId === currentPlayerId)
+                return cur ? (
+                  <StatusRow
+                    icon="👤"
+                    label={isMyTurn ? '✦ 你的回合' : `${cur.name} 的回合`}
+                    color={isMyTurn ? '#4ade80' : cur.color}
+                    bold={isMyTurn}
+                  />
+                ) : null
+              })()}
+            </div>
+
+            {/* 梯形拉手 */}
+            <div
+              onClick={() => setStatusDrawerOpen(v => !v)}
+              style={{ width: 20, height: 72, cursor: 'pointer', position: 'relative', flexShrink: 0 }}
+            >
+              <svg width="20" height="72" viewBox="0 0 20 72" style={{ display: 'block' }}>
+                <polygon
+                  points="0,0 20,10 20,62 0,72"
+                  fill="rgba(15,30,55,0.96)"
+                  stroke="rgba(100,160,255,0.2)"
+                  strokeWidth="1"
+                />
+              </svg>
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, color: 'rgba(150,200,255,0.8)',
+                userSelect: 'none',
+              }}>
+                {statusDrawerOpen ? '◀' : '▶'}
+              </div>
+            </div>
           </div>
 
-          {/* 玩家列表 */}
-          {players.map(p => (
-            <div key={p.playerId} style={{
-              padding: '8px 10px', borderRadius: 8,
-              background: p.playerId === currentPlayerId ? p.color + 'cc' : 'rgba(255,255,255,0.08)',
-              border: p.playerId === you.playerId ? '2px solid #fff' : '2px solid transparent',
-              fontSize: 13,
-              opacity: p.isOnline === false ? 0.5 : 1,
-            }}>
-              <div style={{ fontWeight: 'bold', marginBottom: 3, fontSize: 15, wordBreak: 'break-all' }}>
-                {p.name}
-                {p.playerId === you.playerId && ' (你)'}
-                {p.hasLargestArmy && ' ⚔️'}
-                {p.hasLongestRoad && ' 🛣️'}
-                {p.isOnline === false && ' 🔴'}
-              </div>
-              <div>🏆 {p.victoryPoints} 分</div>
-              <div>🃏 {p.totalCards} 张</div>
-              <div>📜 {p.devCardCount} 张</div>
-              <div style={{ marginTop: 3, opacity: 0.75, fontSize: 13 }}>
-                🏘️{p.settlements} 🏰{p.cities} 🛣️{p.roads}
-              </div>
-              <div style={{ opacity: 0.75, fontSize: 13 }}>⚔️ {p.knightsPlayed} 骑士</div>
+
+
+
+          {/* 其他玩家：左上、上中、右上 */}
+          {players
+            .filter(p => p.playerId !== you.playerId)
+            .map((p, idx) => {
+              const positions: React.CSSProperties[] = [
+                { top: 12, left: 12 },           // 左上
+                { top: 12, left: '50%', transform: 'translateX(-50%)' }, // 上中
+                { top: 12, right: 12 },           // 右上
+              ]
+              const aligns: ('left' | 'center' | 'right')[] = ['left', 'center', 'right']
+              return (
+                <PlayerCard
+                  key={p.playerId}
+                  player={p}
+                  isCurrentPlayer={p.playerId === currentPlayerId}
+                  isMe={false}
+                  align={aligns[idx]}
+                  style={{ position: 'fixed', zIndex: 100, ...positions[idx] }}
+                />
+              )
+            })
+          }
+
+          {/* 本机玩家：左下角 - 下移与资源卡同行 */}
+          {myInfo && (
+            <div
+              ref={playerCardRef}
+              style={{ position: 'fixed', bottom: 12, left: 12, zIndex: 100 }}
+            >
+              <PlayerCard
+                player={myInfo}
+                isCurrentPlayer={myInfo.playerId === currentPlayerId}
+                isMe={true}
+              />
             </div>
-          ))}
-        </div>
+          )}
+
+
+        </>
 
         {/* ── 中列：地图（上）+ 自身信息（下） ── */}
         <div style={{ flex: '1 1 0', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
 
           {/* 地图 */}
           <div style={{
-            flex: '1 1 0', background: '#2c3e50', borderRadius: 12,
-            overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flex: '1 1 0',
+            background: 'transparent',   // ← 去掉深色背景，透出海洋蓝
+            borderRadius: 0,              // ← 去掉圆角边框感
+            border: 'none',               // ← 无边框
+            overflow: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}>
+
             {board && (
               <svg width="800" height="700" viewBox="0 0 800 700"
-                style={{ display: 'block', maxWidth: '100%', maxHeight: '100%' }}>
-                <rect width="800" height="700" fill="#1a6b9a" rx="12" />
+                style={{
+                  display: 'block',
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  transform: 'scale(1.2)', /* 放大 1.15 倍 */
+                  transformOrigin: 'center center'
+                }}>
+
+                <rect width="800" height="700" fill="rgba(10, 50, 80, 0)" rx="16" />
                 {board.ports?.map((port: Port) => (
                   <PortTile key={port.id} port={port} board={board} myPlayerId={you.playerId} />
                 ))}
@@ -662,147 +849,404 @@ export default function GamePage() {
             )}
           </div>
 
-          {/* 底部：我的资源 + 我的发展卡（横向排列） */}
+          {/* 底部：资源 + 港口 + 发展卡 */}
           <div style={{
-            display: 'flex', gap: 8, flexShrink: 0,
-            background: 'rgba(255,255,255,0.08)', borderRadius: 10,
-            padding: '10px 12px',
+            position: 'fixed',
+            bottom: 12,
+            left: 12 + playerCardWidth,  // 👈 动态计算
+            zIndex: 100,
+            display: 'flex', gap: 6, alignItems: 'flex-end',
           }}>
 
+
             {/* 我的资源 */}
-            <div style={{ flex: '1 1 0', minWidth: 0 }}>
-              <h3 style={panelTitle}>🎒 我的资源</h3>
-              <ResourceDisplay resources={you.resources} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              {ALL_RESOURCES.map(key => {
+                const count = you.resources[key] ?? 0
+                return (
+                  <div key={key} style={{
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', gap: 3,
+                  }}>
+                    {/* 上：圆圈 */}
+                    <div style={{
+                      width: 54, height: 54, borderRadius: '50%',
+                      background: count > 0
+                        ? `radial-gradient(circle at 35% 35%, ${RESOURCE_COLOR[key]}ff, ${RESOURCE_COLOR[key]}99)`
+                        : 'rgba(255,255,255,0.08)',
+                      border: count > 0
+                        ? `2.5px solid ${RESOURCE_COLOR[key]}`
+                        : '2.5px solid rgba(255,255,255,0.15)',
+                      display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center',
+                      boxShadow: count > 0 ? `0 0 10px ${RESOURCE_COLOR[key]}66` : 'none',
+                      transition: 'all 0.2s',
+                    }}>
+                      <span style={{ fontSize: 22, lineHeight: 1 }}>{RESOURCE_EMOJI[key]}</span>
+                      <span style={{
+                        fontSize: 10, color: 'rgba(255,255,255,0.85)',
+                        fontWeight: 'bold', marginTop: 1,
+                      }}>{RESOURCE_LABELS[key]}</span>
+                    </div>
+
+                    {/* 下：六边形数字 */}
+                    <HexBadge count={count} color={RESOURCE_COLOR[key]} />
+                  </div>
+                )
+              })}
             </div>
+
+
+
+            {/* 分隔线 */}
+            <div style={{
+              width: 1, alignSelf: 'stretch',
+              background: 'rgba(255,255,255,0.12)',
+              margin: '0 4px',
+            }} />
 
             {/* 我的港口（有才显示） */}
             {board?.ports && getMyPorts().length > 0 && (
-              <div style={{ flex: '1 1 0', minWidth: 0 }}>
-                <h3 style={panelTitle}>⚓ 我的港口</h3>
-                {getMyPorts().map(port => (
-                  <div key={port.id} style={{
-                    fontSize: 12, padding: '4px 8px', marginBottom: 4,
-                    background: 'rgba(255,255,255,0.08)', borderRadius: 6,
-                  }}>
-                    {port.type === 'any'
-                      ? '🌊 通用港口（3:1）'
-                      : `${RESOURCE_EMOJI[port.type as ResourceType]} ${RESOURCE_LABELS[port.type as ResourceType]} 港口（2:1）`}
+              <>
+                <div style={{ flex: '0 0 auto' }}>
+                  <div style={bottomSectionTitle}>⚓ 港口</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {getMyPorts().map(port => {
+                      const isSpecific = port.type !== 'any'
+                      const color = isSpecific ? RESOURCE_COLOR[port.type as ResourceType] : '#2980b9'
+                      return (
+                        <div key={port.id} style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '4px 10px', borderRadius: 8,
+                          background: color + '44',
+                          border: `1.5px solid ${color}88`,
+                          fontSize: 12,
+                        }}>
+                          <span style={{ fontSize: 16 }}>
+                            {isSpecific ? RESOURCE_EMOJI[port.type as ResourceType] : '🌊'}
+                          </span>
+                          <span style={{ color: '#fff', fontWeight: 'bold' }}>
+                            {isSpecific ? `${RESOURCE_LABELS[port.type as ResourceType]} 2:1` : '通用 3:1'}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
-                ))}
-              </div>
+                </div>
+
+                {/* 分隔线 */}
+                <div style={{
+                  width: 1, alignSelf: 'stretch',
+                  background: 'rgba(255,255,255,0.12)',
+                  margin: '0 4px',
+                }} />
+              </>
             )}
 
-            {/* 我的发展卡（始终显示，横向排列） */}
-            <div style={{ flex: '1 1 0', minWidth: 0 }}>
-              <h3 style={panelTitle}>📜 我的发展卡</h3>
-              {you.devCards.length === 0 ? (
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>暂无发展卡</span>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-                  {you.devCards.map((card, i) => {
-                    const usable = canPlayCard(card)
-                    return (
-                      <div key={i} onClick={() => usable && handlePlayDevCard(card.type)}
-                        title={DEV_CARD_DESC[card.type]}
-                        style={{
-                          display: 'flex', flexDirection: 'column', alignItems: 'center',
-                          padding: '6px 10px', borderRadius: 6,
-                          background: usable ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)',
-                          border: usable ? '1px solid rgba(255,255,255,0.4)' : '1px solid rgba(255,255,255,0.1)',
-                          cursor: usable ? 'pointer' : 'default',
-                          opacity: usable ? 1 : 0.5,
-                          transition: 'all 0.15s',
-                        }}>
-                        <div style={{ fontWeight: 'bold', fontSize: 13 }}>{DEV_CARD_LABELS[card.type]}</div>
-                        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
-                          {card.type === 'victory_point'
-                            ? '自动生效'
-                            : (turnNumber ?? 0) <= card.turnBought
-                              ? '下回合可用'
-                              : usable ? '点击使用' : '不可用'}
-                        </div>
-                      </div>
-                    )
-                  })}
+            {/* 我的发展卡 */}
+            <div style={{ flex: '0 0 auto', position: 'relative' }}>
+              {/* 触发按钮：上圆圈 + 下六边形 */}
+              <div style={{
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', gap: 3,
+              }}>
+                {/* 圆圈 - 点击弹出 */}
+                <div
+                  onClick={() => setShowDevCardPanel(v => !v)}
+                  style={{
+                    width: 54, height: 54, borderRadius: '50%',
+                    background: showDevCardPanel
+                      ? 'radial-gradient(circle at 35% 35%, #c39bffff, #9b59b699)'
+                      : 'rgba(255,255,255,0.08)',
+                    border: showDevCardPanel
+                      ? '2.5px solid #b48cff'
+                      : '2.5px solid rgba(255,255,255,0.15)',
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', userSelect: 'none',
+                    boxShadow: showDevCardPanel ? '0 0 10px #b48cff66' : 'none',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <span style={{ fontSize: 22, lineHeight: 1 }}>📜</span>
+                  <span style={{
+                    fontSize: 10, color: 'rgba(255,255,255,0.85)',
+                    fontWeight: 'bold', marginTop: 1,
+                  }}>发展卡</span>
+                </div>
+
+                {/* 六边形数字 */}
+                <HexBadge count={you.devCards.length} color="#9b59b6" />
+              </div>
+
+              {/* 弹出面板 */}
+              {showDevCardPanel && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: 'calc(100% + 10px)',
+                  left: 0,
+                  zIndex: 200,
+                  background: 'rgba(10, 25, 45, 0.97)',
+                  backdropFilter: 'blur(16px)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: 16,
+                  padding: 16,
+                  minWidth: 320,
+                  boxShadow: '0 -8px 32px rgba(0,0,0,0.6)',
+                }}>
+                  {/* 标题栏 */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 14,
+                  }}>
+                    <div style={{
+                      fontSize: 15, fontWeight: 'bold', color: '#fff',
+                    }}>
+                      📜 我的发展卡
+                    </div>
+                    <div
+                      onClick={() => setShowDevCardPanel(false)}
+                      style={{
+                        width: 28, height: 28, borderRadius: '50%',
+                        background: 'rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', fontSize: 14, color: 'rgba(255,255,255,0.7)',
+                        transition: 'all 0.2s',
+                      }}
+                    >✕</div>
+                  </div>
+
+                  {/* 卡片列表 */}
+                  {you.devCards.length === 0 ? (
+                    <div style={{
+                      textAlign: 'center', padding: '20px 0',
+                      color: 'rgba(255,255,255,0.3)', fontSize: 13, fontStyle: 'italic',
+                    }}>
+                      暂无发展卡
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {you.devCards.map((card, i) => {
+                        const usable = canPlayCard(card)
+                        const color = DEV_CARD_COLOR_MAP[card.type]
+                        const isNewCard = (turnNumber ?? 0) <= card.turnBought
+                        return (
+                          <div
+                            key={i}
+                            onClick={() => {
+                              if (usable) {
+                                handlePlayDevCard(card.type)
+                                setShowDevCardPanel(false)
+                              }
+                            }}
+                            title={DEV_CARD_DESC[card.type]}
+                            style={{
+                              display: 'flex', flexDirection: 'column',
+                              alignItems: 'center', justifyContent: 'space-between',
+                              width: 72, minHeight: 96,
+                              borderRadius: 12,
+                              background: usable
+                                ? `linear-gradient(160deg, ${color}cc, ${color}66)`
+                                : 'rgba(255,255,255,0.05)',
+                              border: usable
+                                ? `2px solid ${color}`
+                                : '2px solid rgba(255,255,255,0.1)',
+                              cursor: usable ? 'pointer' : 'default',
+                              opacity: usable ? 1 : 0.45,
+                              padding: '10px 6px 8px',
+                              boxShadow: usable ? `0 4px 16px ${color}55` : 'none',
+                              transition: 'all 0.2s',
+                              position: 'relative', overflow: 'hidden',
+                            }}
+                          >
+                            {/* 光效 */}
+                            {usable && (
+                              <div style={{
+                                position: 'absolute', inset: 0,
+                                background: 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 60%)',
+                                pointerEvents: 'none',
+                              }} />
+                            )}
+                            <div style={{ fontSize: 26 }}>
+                              {DEV_CARD_LABELS[card.type].split(' ')[0]}
+                            </div>
+                            <div style={{
+                              fontSize: 11, fontWeight: 'bold', color: '#fff',
+                              textAlign: 'center', lineHeight: 1.3, marginTop: 6,
+                              textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                            }}>
+                              {DEV_CARD_LABELS[card.type].split(' ').slice(1).join(' ')}
+                            </div>
+                            <div style={{
+                              fontSize: 10, marginTop: 6,
+                              color: usable ? '#2ecc71' : 'rgba(255,255,255,0.35)',
+                              fontWeight: usable ? 'bold' : 'normal',
+                              textAlign: 'center',
+                            }}>
+                              {card.type === 'victory_point'
+                                ? '✦ 自动生效'
+                                : isNewCard
+                                  ? '⏳ 下回合'
+                                  : usable ? '▶ 点击使用' : '✗ 不可用'}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* 提示文字 */}
+                  {you.devCards.some(c => canPlayCard(c)) && (
+                    <div style={{
+                      marginTop: 12, fontSize: 11,
+                      color: 'rgba(255,255,255,0.4)', textAlign: 'center',
+                    }}>
+                      每回合只能使用一张发展卡
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
           </div>
+          {/* 右下角操作圆圈 */}
+          {phase === 'playing' && (
+            <ActionBar
+              isMyTurn={isMyTurn}
+              hasRolled={!!hasRolled}
+              isLocked={isLocked}
+              roadBuildingInfo={roadBuildingInfo}
+              onRoll={handleRollDice}
+              onEndTurn={handleEndTurn}
+              onPortTrade={handleOpenPortTrade}
+              onBuyDevCard={handleBuyDevCard}
+              tradeProps={{
+                roomId: id!,
+                myPlayerId: you.playerId,
+                myResources: you.resources,
+                players,
+                tradeOffer: state.tradeOffer,
+                isMyTurn,
+                hasRolled: !!hasRolled,
+                isLocked,
+              }}
+            />
+          )}
+
         </div>
 
-        {/* ── 右列：游戏规则 + 操作 + 玩家交易 ── */}
+        {/* ── 右侧规则抽屉（fixed 定位，和左侧状态抽屉对称） ── */}
         <div style={{
-          width: 300, fontSize: 15, flexShrink: 0,
-          display: 'flex', flexDirection: 'column', gap: 8,
-          overflowY: 'auto',
+          position: 'fixed',
+          right: rulesDrawerOpen ? 0 : -220,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          zIndex: 150,
+          transition: 'right 0.35s cubic-bezier(0.4,0,0.2,1)',
+          display: 'flex',
+          alignItems: 'center',
         }}>
-
-          {/* 游戏规则 */}
-          <div style={panelStyle}>
-            <h3 style={panelTitle}>📋 游戏规则</h3>
-            <div style={{ fontSize: 12, lineHeight: 1.9, opacity: 0.85 }}>
-              <div>🏘️ 定居点: 木砖羊麦各×1</div>
-              <div>🏰 城市: 麦×2 矿×3</div>
-              <div>🛣️ 道路: 木×1 砖×1</div>
-              <div>📜 发展卡: 羊×1 麦×1 矿×1</div>
-              <div style={{ marginTop: 6, opacity: 0.7 }}>🏆 10分获胜</div>
-              <div style={{ opacity: 0.7 }}>⚔️ 最大军队: 3骑士 +2分</div>
-              <div style={{ opacity: 0.7 }}>🛣️ 最长道路: 5条 +2分</div>
-              <div style={{ marginTop: 6, opacity: 0.7 }}>⚓ 2:1港口: 同类×2换1</div>
-              <div style={{ opacity: 0.7 }}>🌊 3:1港口: 任意×3换1</div>
+          {/* 梯形拉手（在左侧） */}
+          <div
+            onClick={() => setRulesDrawerOpen(v => !v)}
+            style={{ width: 20, height: 72, cursor: 'pointer', position: 'relative', flexShrink: 0 }}
+          >
+            <svg width="20" height="72" viewBox="0 0 20 72" style={{ display: 'block' }}>
+              <polygon
+                points="20,0 0,10 0,62 20,72"
+                fill="rgba(15,30,55,0.96)"
+                stroke="rgba(100,160,255,0.2)"
+                strokeWidth="1"
+              />
+            </svg>
+            <div style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11, color: 'rgba(150,200,255,0.8)',
+              userSelect: 'none',
+            }}>
+              {rulesDrawerOpen ? '▶' : '◀'}
             </div>
           </div>
 
-          {/* 操作按钮 */}
-          <div style={panelStyle}>
-            <h3 style={panelTitle}>⚡ 操作</h3>
-            {phase === 'playing' && isMyTurn ? (
-              <>
-                <button onClick={handleRollDice} disabled={!!hasRolled || isLocked}
-                  style={btnStyle(hasRolled || isLocked ? '#555' : '#e67e22')}>
-                  🎲 {hasRolled ? '已掷骰' : '掷骰子'}
-                </button>
-                <button onClick={handleOpenPortTrade} disabled={!hasRolled || isLocked}
-                  style={btnStyle(!hasRolled || isLocked ? '#555' : '#16a085')}>
-                  ⚓ 港口/银行交易
-                </button>
-                <button onClick={handleBuyDevCard} disabled={!hasRolled || isLocked}
-                  style={btnStyle(!hasRolled || isLocked ? '#555' : '#2980b9')}>
-                  📜 购买发展卡
-                </button>
-                <button onClick={handleEndTurn} disabled={!hasRolled || isLocked || !!roadBuildingInfo}
-                  style={btnStyle(!hasRolled || isLocked || !!roadBuildingInfo ? '#555' : '#27ae60')}>
-                  ✅ 结束回合
-                </button>
-                {hasRolled && !isLocked && (
-                  <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6, lineHeight: 1.6 }}>
-                    点击空顶点建定居点<br />
-                    点击自己的定居点升城市<br />
-                    点击空边建道路
-                  </div>
-                )}
-              </>
-            ) : (
-              <div style={{ padding: '16px 10px', textAlign: 'center', fontSize: 13, opacity: 0.7, lineHeight: 1.6 }}>
-                ⏳ 当前不是你的回合<br />无需操作，请等待...
+          {/* 面板主体 */}
+          <div style={{
+            width: 220,                                          // ← 加宽
+            background: 'linear-gradient(160deg, rgba(15,30,55,0.96), rgba(8,18,35,0.96))',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(100,160,255,0.18)',
+            borderLeft: 'none',
+            borderTopLeftRadius: 12,
+            borderBottomLeftRadius: 12,
+            borderTopRightRadius: 0,
+            borderBottomRightRadius: 0,
+            padding: '16px 16px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 5,
+            boxShadow: '-6px 0 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.07)',
+          }}>
+            {/* 标题 */}
+            <div style={{
+              fontSize: 15, fontWeight: 'bold',
+              color: 'rgba(160,210,255,0.85)',
+              letterSpacing: 1,
+              marginBottom: 8,
+              paddingLeft: 2,
+            }}>
+              📋 游戏规则
+            </div>
+
+            {/* 建造费用 */}
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 2 }}>建造费用</div>
+            {[
+              { icon: '🏘️', text: '定居点: 木 砖 羊 麦 各×1' },
+              { icon: '🏰', text: '城市: 麦×2 矿×3' },
+              { icon: '🛣️', text: '道路: 木×1 砖×1' },
+              { icon: '📜', text: '发展卡: 羊×1 麦×1 矿×1' },
+            ].map(({ icon, text }) => (
+              <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e8f4ff', padding: '2px 0' }}>
+                <span style={{ fontSize: 15, flexShrink: 0 }}>{icon}</span>
+                <span>{text}</span>
               </div>
-            )}
+            ))}
+
+            {/* 分隔线 */}
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '6px 0' }} />
+
+            {/* 胜利条件 */}
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 2 }}>胜利条件</div>
+            {[
+              { icon: '🏆', text: '10分获胜', color: '#f5c842' },
+              { icon: '⚔️', text: '最大军队: 3骑士 +2分', color: 'rgba(180,210,255,0.8)' },
+              { icon: '🛣️', text: '最长道路: 5条 +2分', color: 'rgba(180,210,255,0.8)' },
+            ].map(({ icon, text, color }) => (
+              <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color, padding: '2px 0' }}>
+                <span style={{ fontSize: 15, flexShrink: 0 }}>{icon}</span>
+                <span>{text}</span>
+              </div>
+            ))}
+
+            {/* 分隔线 */}
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '6px 0' }} />
+
+            {/* 港口 */}
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 2 }}>港口规则</div>
+            {[
+              { icon: '⚓', text: '2:1港口: 同类×2 换1', color: 'rgba(180,210,255,0.8)' },
+              { icon: '🌊', text: '3:1港口: 任意×3 换1', color: 'rgba(180,210,255,0.8)' },
+            ].map(({ icon, text, color }) => (
+              <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color, padding: '2px 0' }}>
+                <span style={{ fontSize: 15, flexShrink: 0 }}>{icon}</span>
+                <span>{text}</span>
+              </div>
+            ))}
           </div>
 
-          {/* 玩家交易 */}
-          <TradePanel
-            roomId={id!}
-            myPlayerId={you.playerId}
-            myResources={you.resources}
-            players={players}
-            tradeOffer={state.tradeOffer}
-            isMyTurn={isMyTurn}
-            hasRolled={!!hasRolled}
-            isLocked={isLocked}
-          />
-
         </div>
+
       </div>
     </div>
   )
@@ -810,7 +1254,10 @@ export default function GamePage() {
 
 
 // ============================================================
-// ✅ 新增：港口渲染组件
+// 港口渲染组件 (优化木桥版)
+// ============================================================
+// ============================================================
+// 港口渲染组件 (加长木桥版)
 // ============================================================
 function PortTile({
   port, board, myPlayerId,
@@ -824,6 +1271,37 @@ function PortTile({
   if (!v1 || !v2) return null
 
   const isMine = [v1, v2].some(v => v.ownerPlayerId === myPlayerId)
+
+  // ==========================================
+  // 🌟 核心修改：计算向海面延伸的坐标
+  // ==========================================
+  const midX = (v1.x + v2.x) / 2;
+  const midY = (v1.y + v2.y) / 2;
+
+  // 1. 计算连接两个顶点的边缘的法向量（垂直方向）
+  let nx = -(v2.y - v1.y);
+  let ny = v2.x - v1.x;
+
+  // 2. 确保法向量是指向外侧海面的（远离地图中心点 400, 350）
+  const toCenterX = 400 - midX;
+  const toCenterY = 350 - midY;
+  if (nx * toCenterX + ny * toCenterY > 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+
+  // 3. 归一化向量
+  const len = Math.sqrt(nx * nx + ny * ny);
+  nx /= len;
+  ny /= len;
+
+  // 4. 🌟 桥的长度！你可以修改这个数字（比如 60, 70, 80）来控制桥有多长
+  const bridgeLength = 50;
+
+  // 5. 得出港口圆圈最终的渲染坐标
+  const renderX = midX + nx * bridgeLength;
+  const renderY = midY + ny * bridgeLength;
+  // ==========================================
 
   const portColors: Record<string, string> = {
     wood: '#2d6a2d', brick: '#c0522a', ore: '#7f8c8d',
@@ -839,61 +1317,57 @@ function PortTile({
   }
 
   const color = portColors[port.type] ?? '#2980b9'
-  const lineColor = isMine ? '#FFD700' : 'rgba(255,255,255,0.5)'
-  const lineWidth = isMine ? 2 : 1.5
 
   return (
     <g>
-      {/* 连线到两个顶点 */}
+      {/* --- 木桥 1 (连接顶点 1) --- */}
       <line
-        x1={port.x} y1={port.y} x2={v1.x} y2={v1.y}
-        stroke={lineColor} strokeWidth={lineWidth} strokeDasharray="5 3"
+        x1={renderX} y1={renderY} x2={v1.x} y2={v1.y}
+        stroke="#8b5a2b" strokeWidth="8" strokeLinecap="round"
       />
       <line
-        x1={port.x} y1={port.y} x2={v2.x} y2={v2.y}
-        stroke={lineColor} strokeWidth={lineWidth} strokeDasharray="5 3"
+        x1={renderX} y1={renderY} x2={v1.x} y2={v1.y}
+        stroke="#5c3a18" strokeWidth="2" strokeDasharray="4 4"
       />
 
-      {/* 两个顶点上的锚点标记 */}
-      <circle cx={v1.x} cy={v1.y} r={9} fill={color}
-        stroke={isMine ? '#FFD700' : 'rgba(255,255,255,0.8)'}
-        strokeWidth={isMine ? 2.5 : 1.5} opacity={0.85}
+      {/* --- 木桥 2 (连接顶点 2) --- */}
+      <line
+        x1={renderX} y1={renderY} x2={v2.x} y2={v2.y}
+        stroke="#8b5a2b" strokeWidth="8" strokeLinecap="round"
       />
-      <text x={v1.x} y={v1.y} textAnchor="middle" dominantBaseline="middle"
-        fontSize="9" style={{ userSelect: 'none' }}>⚓</text>
+      <line
+        x1={renderX} y1={renderY} x2={v2.x} y2={v2.y}
+        stroke="#5c3a18" strokeWidth="2" strokeDasharray="4 4"
+      />
 
-      <circle cx={v2.x} cy={v2.y} r={9} fill={color}
-        stroke={isMine ? '#FFD700' : 'rgba(255,255,255,0.8)'}
-        strokeWidth={isMine ? 2.5 : 1.5} opacity={0.85}
+      {/* --- 港口指示牌主体 --- */}
+      <circle cx={renderX} cy={renderY} r={24}
+        fill="#f5e6c8"
+        stroke={isMine ? '#FFD700' : color}
+        strokeWidth={isMine ? 4 : 3}
       />
-      <text x={v2.x} y={v2.y} textAnchor="middle" dominantBaseline="middle"
-        fontSize="9" style={{ userSelect: 'none' }}>⚓</text>
 
-      {/* 港口主体 */}
-      <circle cx={port.x} cy={port.y} r={26}
-        fill={color}
-        stroke={isMine ? '#FFD700' : 'rgba(255,255,255,0.7)'}
-        strokeWidth={isMine ? 3 : 1.5}
-        opacity={0.92}
-      />
       {isMine && (
-        <circle cx={port.x} cy={port.y} r={30}
+        <circle cx={renderX} cy={renderY} r={29}
           fill="none" stroke="#FFD700"
-          strokeWidth="2" strokeDasharray="4 3" opacity={0.7}
+          strokeWidth="2" strokeDasharray="4 3" opacity={0.8}
         />
       )}
-      <text x={port.x} y={port.y - 7} textAnchor="middle" fontSize="15"
+
+      <text x={renderX} y={renderY - 4} textAnchor="middle" fontSize="16"
         style={{ userSelect: 'none' }}>
         {portEmoji[port.type]}
       </text>
-      <text x={port.x} y={port.y + 9} textAnchor="middle" dominantBaseline="middle"
-        fontSize="11" fontWeight="bold" fill="#fff"
+
+      <text x={renderX} y={renderY + 12} textAnchor="middle" dominantBaseline="middle"
+        fontSize="12" fontWeight="bold" fill={color}
         style={{ userSelect: 'none' }}>
         {portLabel[port.type]}
       </text>
     </g>
   )
 }
+
 
 
 // ============================================================
@@ -913,10 +1387,22 @@ function PortTradeModal({
   onCancel: () => void
   getBestRate: (r: ResourceType) => number
 }) {
+  const { pos, onMouseDown } = useDraggable()   // ← 新增
   const canTrade = resources[give] >= rate && give !== receive
 
+  const boxStyle: React.CSSProperties = {       // ← 新增
+    ...modalBox,
+    position: 'fixed',
+    cursor: 'grab',
+    userSelect: 'none',
+    ...(pos
+      ? { top: pos.y, left: pos.x, transform: 'none' }
+      : { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
+    ),
+  }
+
   return (
-    <div style={modalBox}>
+    <div style={boxStyle} onMouseDown={onMouseDown}>  {/* ← 改这里 */}
       <h3 style={{ margin: '0 0 4px' }}>⚓ 港口 / 银行交易</h3>
       <p style={{ margin: '0 0 14px', fontSize: 12, opacity: 0.7 }}>
         系统自动选择最优比率（港口 &gt; 银行）
@@ -982,6 +1468,7 @@ function PortTradeModal({
     </div>
   )
 }
+
 
 // ============================================================
 // 子组件（保持原有）
@@ -1055,20 +1542,29 @@ function HexagonTile({
         <polygon points={points} fill={`url(#${patternId})`} />
       )}
 
-      {/* 边框 */}
+      {/* 边框 - 优化为沙色/木质粗边框 */}
       <polygon
         points={points}
         fill="none"
-        stroke={selected ? '#ffffff' : isRobberTarget ? '#f39c12' : '#1a2a3a'}
-        strokeWidth={selected ? 4 : isRobberTarget ? 3 : 2}
+        stroke={selected ? '#ffffff' : isRobberTarget ? '#f39c12' : '#e3c598'} /* 柔和的沙滩/木质色 */
+        strokeWidth={selected ? 6 : isRobberTarget ? 5 : 4} /* 加粗边框，相邻六边形拼在一起会有 8px 的厚度 */
+        strokeLinejoin="round" /* 让边角更圆润自然 */
         opacity={isRobberTarget ? 0.85 : 1}
       />
 
+
       {/* 强盗 */}
       {hasRobber && (
-        <text x={x} y={y - 30} textAnchor="middle" fontSize="22"
-          style={{ userSelect: 'none' }}>🗡️</text>
+        <image
+          href="/强盗.png"
+          x={x - 40}       /* 向左偏移一半宽度使其居中 */
+          y={y - 70}       /* 向上偏移，让它稳稳坐在数字圆圈上方 */
+          width="80"       /* 设置合适的宽度 */
+          height="80"      /* 设置合适的高度 */
+          style={{ pointerEvents: 'none' }} /* 防止图片遮挡地块的点击事件 */
+        />
       )}
+
 
       {/* 数字圆圈 */}
       {diceNumber > 0 && (
@@ -1145,7 +1641,12 @@ function VertexPoint({
         </g>
       )}
       {!hasBuilding && (
-        <circle cx={x} cy={y} r={5} fill="rgba(255,255,255,0.3)" />
+        <g>
+          {/* 外圈底座 */}
+          <circle cx={x} cy={y} r={7} fill="#f5e6c8" stroke="#a68a56" strokeWidth="1.5" />
+          {/* 内圈小点 */}
+          <circle cx={x} cy={y} r={2.5} fill="#a68a56" />
+        </g>
       )}
     </g>
   )
@@ -1169,7 +1670,7 @@ function EdgeLine({
       <line
         x1={x1} y1={y1} x2={x2} y2={y2}
         stroke={hasRoad ? owner?.color ?? '#fff' : 'rgba(255,255,255,0.2)'}
-        strokeWidth={hasRoad ? 6 : 3}
+        strokeWidth={hasRoad ? 8 : 4}
         strokeLinecap="round"
       />
       {isClickable && !hasRoad && (
@@ -1183,28 +1684,6 @@ function EdgeLine({
         <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth="16" />
       )}
     </g>
-  )
-}
-
-function ResourceDisplay({ resources }: { resources: PlayerResources }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-      {ALL_RESOURCES.map(key => (
-        <div key={key} style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          background: 'rgba(255,255,255,0.08)', borderRadius: 6, padding: '4px 8px',
-        }}>
-          <span style={{ fontSize: 13 }}>{RESOURCE_EMOJI[key]} {RESOURCE_LABELS[key]}</span>
-          <span style={{
-            background: RESOURCE_COLOR[key], color: '#fff', borderRadius: 4,
-            padding: '1px 8px', fontWeight: 'bold', fontSize: 13,
-            minWidth: 24, textAlign: 'center',
-          }}>
-            {resources[key] ?? 0}
-          </span>
-        </div>
-      ))}
-    </div>
   )
 }
 
@@ -1341,23 +1820,6 @@ function ModalOverlay({ children }: { children: React.ReactNode }) {
 }
 
 
-function Tag({
-  color, children,
-}: {
-  color: string
-  children: React.ReactNode
-}) {
-  return (
-    <span style={{
-      background: color, color: '#fff',
-      padding: '4px 10px', borderRadius: 6,
-      fontWeight: 'bold', fontSize: 13,
-    }}>
-      {children}
-    </span>
-  )
-}
-
 function getPhaseText(phase: string) {
   const map: Record<string, string> = {
     setup_settlement: '放置定居点',
@@ -1368,19 +1830,55 @@ function getPhaseText(phase: string) {
   return map[phase] ?? phase
 }
 
-const panelStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.08)',
-  borderRadius: 10,
-  padding: '10px 12px',
+/** 横向六边形数字徽章 */
+function HexBadge({ count, color }: { count: number; color: string }) {
+  return (
+    <div style={{ position: 'relative', width: 54, height: 28 }}>
+      <svg width="54" height="28" viewBox="0 0 54 28" overflow="visible">
+        <polygon
+          points="15,2 39,2 52,14 39,26 15,26 2,14"
+          fill={count > 0 ? color + 'cc' : 'rgba(255,255,255,0.08)'}
+          stroke={count > 0 ? color : 'rgba(255,255,255,0.15)'}
+          strokeWidth="1.5"
+        />
+      </svg>
+      <span style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 15, fontWeight: 'bold', color: '#fff',
+        textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+      }}>{count}</span>
+    </div>
+  )
 }
 
-const panelTitle: React.CSSProperties = {
-  margin: '0 0 8px 0',
-  fontSize: 20,
-  fontWeight: 'bold',
-  borderBottom: '1px solid rgba(255,255,255,0.15)',
-  paddingBottom: 6,
+function StatusRow({
+  icon, label, color, bold,
+}: {
+  icon: string
+  label: string
+  color: string
+  bold?: boolean
+}) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '6px 10px', borderRadius: 10,
+      background: 'rgba(255,255,255,0.05)',
+      border: '1px solid rgba(255,255,255,0.07)',
+      transition: 'background 0.2s',
+    }}>
+      <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1 }}>{icon}</span>
+      <span style={{
+        fontSize: 12.5, color,
+        fontWeight: bold ? 'bold' : '500',
+        lineHeight: 1.35,
+        letterSpacing: 0.3,
+      }}>{label}</span>
+    </div>
+  )
 }
+
 
 const modalBox: React.CSSProperties = {
   background: '#1e2d3d',
@@ -1422,4 +1920,454 @@ const smallBtn: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+}
+
+// 发展卡颜色映射（底部卡牌用）
+const DEV_CARD_COLOR_MAP: Record<DevCardType, string> = {
+  knight: '#e74c3c',
+  victory_point: '#f39c12',
+  road_building: '#8e44ad',
+  year_of_plenty: '#2980b9',
+  monopoly: '#16a085',
+}
+
+const bottomSectionTitle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 'bold',
+  color: 'rgba(255,255,255,0.5)',
+  letterSpacing: 1,
+  textTransform: 'uppercase' as const,
+  marginBottom: 6,
+}
+
+
+// ============================================================
+// PlayerCard 组件（圆形头像 + 数据小圆圈 + 悬浮详情）
+// ============================================================
+function PlayerCard({
+  player, isCurrentPlayer, isMe, style, align = 'left'
+}: {
+  player: PlayerSummary
+  isCurrentPlayer: boolean
+  isMe: boolean
+  style?: React.CSSProperties
+  align?: 'left' | 'center' | 'right'
+}) {
+  const [isHovered, setIsHovered] = useState(false) // 👈 新增悬浮状态
+
+  const avatarIndex = (() => {
+    const colorMap: Record<string, number> = {
+      '#e74c3c': 1, '#e67e22': 2, '#3498db': 3, '#2ecc71': 4,
+      '#9b59b6': 1, '#1abc9c': 2, '#f39c12': 3, '#e91e63': 4,
+    }
+    return colorMap[player.color] ?? 1
+  })()
+
+  // 补全了标签名称，方便在悬浮窗中显示
+  const stats = [
+    { icon: '🏆', value: player.victoryPoints, label: '胜利点' },
+    { icon: '🃏', value: player.totalCards, label: '资源卡' },
+    { icon: '⚔️', value: player.knightsPlayed, label: '骑士卡' },
+    { icon: '🛣️', value: player.roads, label: '道路长度' },
+  ]
+
+  // 👇 根据对齐方式计算悬浮窗的位置
+  let tooltipStyle: React.CSSProperties = { top: '100%', marginTop: 12 }
+  if (isMe) {
+    tooltipStyle = { bottom: '100%', left: 0, marginBottom: 12, top: 'auto' }
+  } else if (align === 'left') {
+    tooltipStyle = { ...tooltipStyle, left: 0 }
+  } else if (align === 'right') {
+    tooltipStyle = { ...tooltipStyle, right: 0 }
+  } else {
+    tooltipStyle = { ...tooltipStyle, left: '50%', transform: 'translateX(-50%)' }
+  }
+
+  return (
+    <div 
+      onMouseEnter={() => setIsHovered(true)} // 👈 鼠标移入
+      onMouseLeave={() => setIsHovered(false)} // 👈 鼠标移出
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        padding: '8px 14px',
+        borderRadius: 50,
+        background: isCurrentPlayer
+          ? `linear-gradient(135deg, ${player.color}cc, ${player.color}66)`
+          : 'rgba(0,0,0,0.55)',
+        border: isMe
+          ? '2px solid #fff'
+          : isCurrentPlayer
+            ? `2px solid ${player.color}`
+            : '2px solid rgba(255,255,255,0.2)',
+        backdropFilter: 'blur(8px)',
+        boxShadow: isCurrentPlayer
+          ? `0 0 16px ${player.color}88`
+          : '0 4px 12px rgba(0,0,0,0.4)',
+        transition: 'all 0.3s ease',
+        position: 'relative', // 👈 关键：让 Tooltip 相对定位
+        ...style,
+      }}
+    >
+      {/* 👇 新增：悬浮详情面板 👇 */}
+      {isHovered && (
+        <div style={{
+          position: 'absolute',
+          ...tooltipStyle,
+          background: 'rgba(15, 30, 50, 0.95)',
+          backdropFilter: 'blur(12px)',
+          border: `1px solid ${player.color}88`,
+          borderRadius: 12,
+          padding: '12px 16px',
+          minWidth: 160,
+          boxShadow: '0 10px 32px rgba(0,0,0,0.8)',
+          zIndex: 300,
+          pointerEvents: 'none', // 防止悬浮窗挡住鼠标事件
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          cursor: 'default',
+        }}>
+          <div style={{
+            fontSize: 14, fontWeight: 'bold', color: player.color,
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            paddingBottom: 6, marginBottom: 2,
+            textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+          }}>
+            {player.name} 的详细信息
+          </div>
+          
+          {stats.map(s => (
+            <div key={s.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 16 }}>{s.icon}</span>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>{s.label}</span>
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 'bold', color: '#fff' }}>{s.value}</span>
+            </div>
+          ))}
+
+          {/* 如果有最大军队或最长道路，额外高亮显示 */}
+          {(player.hasLargestArmy || player.hasLongestRoad) && (
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 6, marginTop: 2 }}>
+              {player.hasLargestArmy && <div style={{ fontSize: 11, color: '#f39c12', marginBottom: 4 }}>👑 拥有最大军队 (+2分)</div>}
+              {player.hasLongestRoad && <div style={{ fontSize: 11, color: '#f39c12' }}>👑 拥有最长道路 (+2分)</div>}
+            </div>
+          )}
+        </div>
+      )}
+      {/* 👆 新增结束 👆 */}
+
+      {/* 圆形头像 */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <div style={{
+          width: isMe ? 68 : 56,
+          height: isMe ? 68 : 56,
+          borderRadius: '50%',
+          overflow: 'hidden',
+          border: `3px solid ${player.color}`,
+          boxShadow: `0 0 0 2px rgba(255,255,255,0.3)`,
+        }}>
+          <img
+            src={`/${avatarIndex}.png`}
+            alt={player.name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={e => {
+              const t = e.currentTarget
+              t.style.display = 'none'
+              const parent = t.parentElement!
+              parent.style.background = player.color
+              parent.style.display = 'flex'
+              parent.style.alignItems = 'center'
+              parent.style.justifyContent = 'center'
+              parent.innerHTML = `<span style="font-size:20px">👤</span>`
+            }}
+          />
+        </div>
+        {/* 当前回合指示点 */}
+        {isCurrentPlayer && (
+          <div style={{
+            position: 'absolute', bottom: 0, right: 0,
+            width: 12, height: 12, borderRadius: '50%',
+            background: '#2ecc71',
+            border: '2px solid #fff',
+            boxShadow: '0 0 6px #2ecc71',
+          }} />
+        )}
+        {/* 离线指示 */}
+        {player.isOnline === false && (
+          <div style={{
+            position: 'absolute', bottom: 0, right: 0,
+            width: 12, height: 12, borderRadius: '50%',
+            background: '#e74c3c',
+            border: '2px solid #fff',
+          }} />
+        )}
+      </div>
+
+      {/* 右侧信息 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {/* 玩家名称 */}
+        <div style={{
+          fontSize: isMe ? 15 : 13,
+          fontWeight: 'bold',
+          color: '#fff',
+          textShadow: '1px 1px 3px rgba(0,0,0,0.8)',
+          maxWidth: 100,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {player.name}
+          {isMe && ' (你)'}
+          {player.hasLargestArmy && ' ⚔️'}
+          {player.hasLongestRoad && ' 🛣️'}
+        </div>
+
+        {/* 数据小圆圈行 */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {stats.map(s => (
+            <div key={s.label} style={{
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center',
+              minWidth: 34,
+            }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%',
+                background: 'rgba(255,255,255,0.15)',
+                border: '1.5px solid rgba(255,255,255,0.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 13,
+              }}>
+                {s.icon}
+              </div>
+              <div style={{
+                fontSize: 12, fontWeight: 'bold', color: '#fff',
+                textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+                marginTop: 1,
+              }}>
+                {s.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ActionBar({
+  isMyTurn, hasRolled, isLocked, roadBuildingInfo,
+  onRoll, onEndTurn, onPortTrade, onBuyDevCard,
+  tradeProps,
+}: {
+  isMyTurn: boolean
+  hasRolled: boolean
+  isLocked: boolean
+  roadBuildingInfo: { roadsLeft: number } | null | undefined
+  onRoll: () => void
+  onEndTurn: () => void
+  onPortTrade: () => void
+  onBuyDevCard: () => void
+  tradeProps: {
+    roomId: string
+    myPlayerId: string
+    myResources: PlayerResources
+    players: PlayerSummary[]
+    tradeOffer: import('@catan/shared').TradeOffer | null | undefined
+    isMyTurn: boolean
+    hasRolled: boolean
+    isLocked: boolean
+  }
+}) {
+  const [tradeOpen, setTradeOpen] = useState(false)
+
+  const canRoll = isMyTurn && !hasRolled && !isLocked
+  const canEnd = isMyTurn && !!hasRolled && !isLocked && !roadBuildingInfo
+  const canAct = isMyTurn && !!hasRolled && !isLocked
+
+  const iAmReceiver = !!tradeProps.tradeOffer &&
+    tradeProps.tradeOffer.fromPlayerId !== tradeProps.myPlayerId
+  const hasTradeNotif = iAmReceiver && tradeProps.tradeOffer?.status === 'pending'
+
+  return (
+    <>
+      <div style={{
+        position: 'fixed',
+        bottom: 20,
+        right: 20,
+        zIndex: 200,
+        display: 'flex',
+        alignItems: 'flex-end',
+        gap: 12, /* 恢复原来的间距 */
+      }}>
+        {/* 三个小圆圈 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <ActionCircle
+            icon="⚓"
+            label="港口/银行交易"
+            color="#16a085"
+            disabled={!canAct}
+            onClick={onPortTrade}
+            size={62}
+          />
+          <ActionCircle
+            icon="📜"
+            label="购买发展卡"
+            color="#2980b9"
+            disabled={!canAct}
+            onClick={onBuyDevCard}
+            size={62}
+          />
+          <ActionCircle
+            icon="🤝"
+            label={hasTradeNotif ? '有交易邀约！' : '玩家交易'}
+            color={hasTradeNotif ? '#e74c3c' : '#8e44ad'}
+            disabled={false}
+            onClick={() => setTradeOpen(true)}
+            size={62}
+            badge={hasTradeNotif}
+          />
+        </div>
+
+        {/* 右侧：结束回合（上）+ 骰子（下） */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <ActionCircle
+            icon="✅"
+            label="结束回合"
+            color="#27ae60"
+            disabled={!canEnd}
+            onClick={onEndTurn}
+            size={62}
+          />
+          <ActionCircle
+            icon={hasRolled ? '🎲' : '🎲'}
+            label={hasRolled ? '已掷骰' : '掷骰子'}
+            color={canRoll ? '#e67e22' : '#555'}
+            disabled={!canRoll}
+            onClick={onRoll}
+            size={80}
+          />
+        </div>
+      </div>
+
+      {/* 交易弹窗 */}
+      {tradeOpen && (
+        <TradePanelModal
+          {...tradeProps}
+          onClose={() => setTradeOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+function ActionCircle({
+  icon, label, color, disabled, onClick, size, badge,
+}: {
+  icon: string
+  label: string
+  color: string
+  disabled: boolean
+  onClick: () => void
+  size: number
+  badge?: boolean
+}) {
+  const [hovered, setHovered] = useState(false)
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {/* Tooltip */}
+      {hovered && (
+        <div style={{
+          position: 'absolute',
+          bottom: size + 8,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.85)',
+          color: '#fff',
+          fontSize: 12,
+          padding: '4px 10px',
+          borderRadius: 6,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+          zIndex: 300,
+        }}>
+          {label}
+        </div>
+      )}
+
+      {/* 圆圈按钮 */}
+      <div
+        onClick={disabled ? undefined : onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          background: disabled
+            ? 'rgba(0 ,0 ,0 ,0.75)'
+            : `radial-gradient(circle at 35% 35%, ${color}ff, ${color}99)`,
+          border: disabled
+            ? '2.5px solid rgba(255,255,255,0.55)'
+            : `2.5px solid ${color}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.45 : 1,
+          boxShadow: disabled ? 'none' : `0 0 14px ${color}66`,
+          transition: 'all 0.2s',
+          fontSize: size >= 60 ? 28 : 22,
+          userSelect: 'none',
+        }}
+      >
+        {icon}
+      </div>
+
+      {/* 红点通知 */}
+      {badge && (
+        <div style={{
+          position: 'absolute',
+          top: -3, right: -3,
+          width: 12, height: 12,
+          borderRadius: '50%',
+          background: '#e74c3c',
+          border: '2px solid #071e2e',
+          boxShadow: '0 0 6px #e74c3c',
+        }} />
+      )}
+    </div>
+  )
+}
+
+function TradePanelModal(props: {
+  roomId: string
+  myPlayerId: string
+  myResources: PlayerResources
+  players: PlayerSummary[]
+  tradeOffer: import('@catan/shared').TradeOffer | null | undefined
+  isMyTurn: boolean
+  hasRolled: boolean
+  isLocked: boolean
+  onClose: () => void
+}) {
+  return (
+    <TradePanel
+      roomId={props.roomId}
+      myPlayerId={props.myPlayerId}
+      myResources={props.myResources}
+      players={props.players}
+      tradeOffer={props.tradeOffer}
+      isMyTurn={props.isMyTurn}
+      hasRolled={props.hasRolled}
+      isLocked={props.isLocked}
+      forceOpen
+      onClose={props.onClose}
+    />
+  )
 }
