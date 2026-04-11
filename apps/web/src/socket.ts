@@ -1,6 +1,7 @@
 ﻿import { io } from 'socket.io-client'
 
-const socket = io('http://localhost:3001', {
+// 👇 就是改了这里，把 localhost 换成了公网 IP
+const socket = io('http://124.222.7.192:3001', {
   autoConnect: true,
   reconnection: true,           // 自动重连
   reconnectionAttempts: 10,     // 最多尝试10次
