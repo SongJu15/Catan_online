@@ -517,7 +517,7 @@ export default function GamePage() {
       {!showDiscardModal && modal && (
         <ModalOverlay>
           {modal === 'rob_player' && (
-            <div style={modalBox}>
+            <DraggableModalBox>
               <h3 style={{ margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
                 选择抢劫目标
               </h3>
@@ -529,7 +529,7 @@ export default function GamePage() {
                 </button>
               ))}
               <button onClick={() => handleRobPlayerConfirm(null)} style={btnStyle('#888')}>不抢劫，直接放置</button>
-            </div>
+            </DraggableModalBox>
           )}
           {modal === 'bank_trade' && (
             <BankTradeModal resources={you.resources} give={tradeGive} receive={tradeReceive}
@@ -543,7 +543,7 @@ export default function GamePage() {
               onCancel={() => setModal(null)} getBestRate={getBestTradeRate} />
           )}
           {modal === 'year_of_plenty' && (
-            <div style={modalBox}>
+            <DraggableModalBox>
               <h3 style={{ margin: '0 0 12px' }}>🌟 丰收年 — 选择2种资源</h3>
               <div style={{ marginBottom: 12 }}>
                 <label style={{ fontSize: 13, opacity: 0.8 }}>第1种资源</label>
@@ -555,25 +555,28 @@ export default function GamePage() {
               </div>
               <button onClick={handleYopConfirm} style={btnStyle('#27ae60')}>确认</button>
               <button onClick={() => setModal(null)} style={{ ...btnStyle('#888'), marginTop: 8 }}>取消</button>
-            </div>
+            </DraggableModalBox>
           )}
           {modal === 'monopoly' && (
-            <div style={modalBox}>
+            <DraggableModalBox>
               <h3 style={{ margin: '0 0 12px' }}>💰 垄断 — 选择资源种类</h3>
               <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.8 }}>所有其他玩家将把该资源全部给你</p>
               <ResourceSelect value={monopolyRes} onChange={setMonopolyRes} />
               <button onClick={handleMonopolyConfirm} style={{ ...btnStyle('#e67e22'), marginTop: 12 }}>确认</button>
               <button onClick={() => setModal(null)} style={{ ...btnStyle('#888'), marginTop: 8 }}>取消</button>
-            </div>
+            </DraggableModalBox>
           )}
           {modal === 'road_building_hint' && (
-            <div style={{ ...modalBox, textAlign: 'center' }}>
-              <div style={{ fontSize: 36, marginBottom: 8 }}>🛣️</div>
-              <p>道路建设卡已激活！<br />可以免费建造 2 条道路</p>
-            </div>
+            <DraggableModalBox>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>🛣️</div>
+                <p>道路建设卡已激活！<br />可以免费建造 2 条道路</p>
+              </div>
+            </DraggableModalBox>
           )}
         </ModalOverlay>
       )}
+
 
       {modal === 'draw_card' && (
         <DevCardDeck
@@ -1726,7 +1729,8 @@ function DiscardModal({
   }
 
   return (
-    <div style={modalBox}>
+    // 👇 这里换成了 DraggableModalBox 👇
+    <DraggableModalBox>
       <h3 style={{ margin: '0 0 4px' }}>⚠️ 骰到7点 — 丢弃资源</h3>
       <p style={{ margin: '0 0 14px', fontSize: 13, opacity: 0.8 }}>
         你的手牌超过7张，必须丢弃 <strong>{required}</strong> 张（当前已选 {selected} 张）
@@ -1751,7 +1755,8 @@ function DiscardModal({
       >
         确认丢弃（{selected}/{required}）
       </button>
-    </div>
+    </DraggableModalBox>
+    // 👆 结尾也换成了 DraggableModalBox 👆
   )
 }
 
@@ -1984,7 +1989,7 @@ function PlayerCard({
   }
 
   return (
-    <div 
+    <div
       onMouseEnter={() => setIsHovered(true)} // 👈 鼠标移入
       onMouseLeave={() => setIsHovered(false)} // 👈 鼠标移出
       style={{
@@ -2038,7 +2043,7 @@ function PlayerCard({
           }}>
             {player.name} 的详细信息
           </div>
-          
+
           {stats.map(s => (
             <div key={s.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -2371,3 +2376,26 @@ function TradePanelModal(props: {
     />
   )
 }
+
+// ============================================================
+// 通用可拖拽弹窗容器
+// ============================================================
+function DraggableModalBox({ children }: { children: React.ReactNode }) {
+  const { pos, onMouseDown } = useDraggable()
+  const boxStyle: React.CSSProperties = {
+    ...modalBox,
+    position: 'fixed',
+    cursor: 'grab',
+    userSelect: 'none',
+    ...(pos
+      ? { top: pos.y, left: pos.x, transform: 'none' }
+      : { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
+    ),
+  }
+  return (
+    <div style={boxStyle} onMouseDown={onMouseDown}>
+      {children}
+    </div>
+  )
+}
+
