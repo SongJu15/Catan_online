@@ -177,17 +177,18 @@ export default function GamePage() {
     }
   }, [])
 
-  useEffect(() => {
+    useEffect(() => {
     const style = document.createElement('style')
     style.textContent = `
     @keyframes eventPulse {
-      0%, 100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
-      50% { opacity: 0.92; transform: translate(-50%, 0) scale(1.025); }
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.92; transform: scale(1.025); }
     }
   `
     document.head.appendChild(style)
     return () => { document.head.removeChild(style) }
   }, [])
+
 
   if (!syncData) return null
 
@@ -599,7 +600,7 @@ export default function GamePage() {
           {(iMustDiscard || isMovingRobber || isRoadBuilding) && (
             <div style={{
               position: 'fixed',
-              top: '28%',
+              top: '18%',
               left: '50%',
               transform: 'translateX(-50%)',
               zIndex: 9997,
