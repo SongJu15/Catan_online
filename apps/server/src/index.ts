@@ -1343,6 +1343,7 @@ socket.on(ACTION_TRADE_CANCEL, (req: TradeCancelReq) => {
   });
 });
 
-httpServer.listen(3001, () => {
-  console.log("🚀 Server running on http://localhost:3001");
+httpServer.listen(3001, "0.0.0.0", () => {
+  console.log("🚀 Server running on port 3001");
 });
+
