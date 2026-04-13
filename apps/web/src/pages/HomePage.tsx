@@ -79,7 +79,6 @@ export default function HomePage() {
           font-weight: 900;
           letter-spacing: 0.12em;
           color: #ffe97a;
-          /* 多层 text-shadow 制造立体感 */
           text-shadow:
             0px 1px 0px #c9952a,
             0px 2px 0px #b8841f,
@@ -204,15 +203,12 @@ export default function HomePage() {
       `}</style>
 
       <div className="home-bg">
-        {/* 立体动态标题 */}
         <div className="catan-title-wrap">
           <div className="catan-title">卡坦岛</div>
           <div className="catan-subtitle">CATAN · ONLINE</div>
         </div>
 
-        {/* 表单卡片 */}
         <div className="home-card">
-          {/* 玩家名称 */}
           <div style={{ marginBottom: 16 }}>
             <label className="home-label">玩家名称</label>
             <input
@@ -230,7 +226,6 @@ export default function HomePage() {
 
           <hr className="home-card-divider" />
 
-          {/* 房间号 */}
           <div style={{ marginBottom: 0 }}>
             <label className="home-label">房间号</label>
             <input

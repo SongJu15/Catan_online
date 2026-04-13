@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react'
 import type { DevCardType } from '@catan/shared'
 
+// 👇 1. 核心修改：使用 import 引入所有图片 👇
+import knightImg from '@assets/发展卡/骑士卡.png'
+import vpImg from '@assets/发展卡/得分卡.png'
+import roadImg from '@assets/发展卡/道路建设.png'
+import monopolyImg from '@assets/发展卡/资源垄断.png'
+import yopImg from '@assets/发展卡/丰收年.png'
+import cardBackImg from '@assets/发展卡/发展卡.png'
+
 const DEV_CARD_LABELS: Record<DevCardType, string> = {
   knight: '⚔️ 骑士',
   victory_point: '🏆 分数',
@@ -9,13 +17,13 @@ const DEV_CARD_LABELS: Record<DevCardType, string> = {
   year_of_plenty: '🌟 资源丰收',
 }
 
-// ✅ 新增：映射到你设计的精美图片路径
+// 👇 2. 核心修改：将字符串替换为 import 进来的变量 👇
 const DEV_CARD_IMAGES: Record<DevCardType, string> = {
-  knight: '/发展卡/骑士卡.png',
-  victory_point: '/发展卡/得分卡.png',
-  road_building: '/发展卡/道路建设.png',
-  monopoly: '/发展卡/资源垄断.png',
-  year_of_plenty: '/发展卡/丰收年.png',
+  knight: knightImg,
+  victory_point: vpImg,
+  road_building: roadImg,
+  monopoly: monopolyImg,
+  year_of_plenty: yopImg,
 }
 
 const DEV_CARD_DESC: Record<DevCardType, string> = {
@@ -48,7 +56,7 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
   }, [revealedCard, selectedPos])
 
   const fanAngle = Math.min(80, totalCards * 5)
-  const radius = 480 // 稍微加大半径适应更大的卡牌
+  const radius = 480 
 
   const getCardTransform = (index: number, total: number, isHovered: boolean) => {
     const step = total > 1 ? fanAngle / (total - 1) : 0
@@ -84,7 +92,6 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
     : null
 
   return (
-    // 外层：半透明遮罩 (加深一点，突出中间的高级感)
     <div style={{
       position: 'fixed', inset: 0,
       background: 'rgba(0,0,0,0.75)',
@@ -94,7 +101,6 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
       zIndex: 9999,
       backdropFilter: 'blur(4px)',
     }}>
-      {/* 内层：居中弹窗 —— 改为复古暗色皮革/实木质感渐变 */}
       <div style={{
         background: 'radial-gradient(circle at 50% 0%, #3a2a20 0%, #140d0a 100%)',
         borderRadius: 20,
@@ -106,7 +112,7 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
         flexDirection: 'column',
         alignItems: 'center',
         boxShadow: '0 20px 60px rgba(0,0,0,0.9), inset 0 2px 10px rgba(212,175,55,0.15)',
-        border: '1px solid #5c4322', // 暗金色边框
+        border: '1px solid #5c4322', 
         overflow: 'visible',
       }}>
         <style>{`
@@ -125,9 +131,8 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
           }
         `}</style>
 
-        {/* 标题 */}
         <div style={{
-          color: '#e8d3a2', // 羊皮纸/淡金色
+          color: '#e8d3a2', 
           fontSize: 22, fontWeight: 'bold',
           textShadow: '2px 2px 8px rgba(0,0,0,0.8)',
           textAlign: 'center',
@@ -141,15 +146,13 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
               : '⏳ 正在揭晓...'}
         </div>
 
-        {/* 扇形牌区 */}
         <div style={{
           position: 'relative',
           width: '100%',
-          height: 340, // 稍微加高，适应更大的卡牌
+          height: 340, 
           perspective: 1500,
           overflow: 'visible',
         }}>
-          {/* 未选中的背面牌 */}
           {Array.from({ length: totalCards }, (_, i) => {
             if (i === selectedPos) return null
             const displayIndex = selectedPos !== null && i > selectedPos ? i - 1 : i
@@ -165,7 +168,7 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
                 onClick={() => handleCardClick(i)}
                 style={{
                   position: 'absolute', left: '50%', bottom: 0,
-                  width: 120, height: 175, marginLeft: -60, // 放大卡牌尺寸
+                  width: 120, height: 175, marginLeft: -60, 
                   transform: `translate(${x}px, ${y}px) rotate(${rotation}deg) ${isHovered ? 'scale(1.12)' : 'scale(1)'}`,
                   transformOrigin: 'center bottom',
                   transition: 'all 0.25s cubic-bezier(0.34,1.56,0.64,1)',
@@ -178,7 +181,6 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
             )
           })}
 
-          {/* 选中的牌（飞起 + 翻牌） */}
           {selectedPos !== null && selectedTransform && (
             <div
               style={{
@@ -200,23 +202,21 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
                 transformStyle: 'preserve-3d',
                 animation: revealed ? 'devCardFlip 0.7s 0.1s cubic-bezier(0.4,0,0.2,1) forwards' : undefined,
               }}>
-                {/* 牌背 */}
                 <div style={{
                   position: 'absolute', inset: 0,
                   backfaceVisibility: 'hidden',
                 }}>
                   <CardBack highlighted />
                 </div>
-                {/* 牌面（翻转后显示真实的图片） */}
                 {revealedCard && (
                   <div style={{
                     position: 'absolute', inset: 0,
                     backfaceVisibility: 'hidden',
                     transform: 'rotateY(180deg)',
-                    borderRadius: 10, // 配合图片的圆角
-                    overflow: 'hidden', // 裁剪掉直角
-                    boxShadow: '0 15px 40px rgba(0,0,0,0.8), 0 0 30px rgba(212,175,55,0.5)', // 金色发光效果
-                    background: '#2a1f1a', // 图片未加载时的底色
+                    borderRadius: 10, 
+                    overflow: 'hidden', 
+                    boxShadow: '0 15px 40px rgba(0,0,0,0.8), 0 0 30px rgba(212,175,55,0.5)', 
+                    background: '#2a1f1a', 
                   }}>
                     <img 
                       src={DEV_CARD_IMAGES[revealedCard]} 
@@ -230,13 +230,12 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
           )}
         </div>
 
-        {/* 结果详情卡片 */}
         {revealed && revealedCard && (
           <div style={{
             marginTop: 16,
             animation: 'resultFadeIn 0.5s ease-out',
             background: 'linear-gradient(180deg, rgba(40,30,20,0.9) 0%, rgba(20,15,10,0.9) 100%)',
-            border: '1px solid #d4af37', // 香槟金边框
+            border: '1px solid #d4af37', 
             borderRadius: 14, padding: '16px 32px',
             textAlign: 'center', color: '#e8d3a2',
             width: '100%',
@@ -252,8 +251,8 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
               onClick={onClose}
               style={{
                 padding: '10px 40px', fontSize: 16,
-                background: 'linear-gradient(135deg, #d4af37 0%, #aa7c11 100%)', // 金色渐变按钮
-                color: '#1a1210', // 深色文字对比强烈
+                background: 'linear-gradient(135deg, #d4af37 0%, #aa7c11 100%)', 
+                color: '#1a1210', 
                 border: 'none', borderRadius: 8,
                 cursor: 'pointer', fontWeight: 'bold',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.4)',
@@ -265,7 +264,6 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
           </div>
         )}
 
-        {/* 等待服务器响应提示 */}
         {selectedPos !== null && !revealed && (
           <div style={{
             marginTop: 16,
@@ -275,7 +273,6 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
           </div>
         )}
 
-        {/* 取消按钮（未选牌时显示） */}
         {selectedPos === null && !isWaiting && (
           <button
             onClick={onClose}
@@ -303,21 +300,21 @@ export default function DevCardDeck({ cardCount, revealedCard, isWaiting, onClos
   )
 }
 
-/** 卡背组件：替换为真实的卡背图片 */
 function CardBack({ highlighted = false }: { highlighted?: boolean }) {
   return (
     <div style={{
       width: '100%', height: '100%',
-      borderRadius: 10, // 配合图片的圆角
+      borderRadius: 10, 
       overflow: 'hidden',
       background: '#2a1f1a',
       boxShadow: highlighted
-        ? '0 0 20px 4px rgba(212,175,55,0.6)' // 选中时发金光
+        ? '0 0 20px 4px rgba(212,175,55,0.6)' 
         : '0 4px 16px rgba(0,0,0,0.6)',
       transition: 'box-shadow 0.3s',
     }}>
+      {/* 👇 3. 核心修改：卡背也使用 import 进来的变量 👇 */}
       <img 
-        src="/发展卡/发展卡.png" 
+        src={cardBackImg} 
         alt="卡背" 
         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
       />

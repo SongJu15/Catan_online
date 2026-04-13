@@ -19,6 +19,27 @@ import TradePanel from '../components/TradePanel'
 import DevCardDeck from '../components/DevCardDeck'
 import { calcBestTradeRate } from '@catan/shared'
 
+// 👇 新增：引入所有地图、背景、头像图片 👇
+import oceanBg from '@assets/海洋.png'
+import robberImg from '@assets/强盗.png'
+import woodImg from '@assets/树林.png'
+import brickImg from '@assets/砖块.png'
+import oreImg from '@assets/石头.png'
+import wheatImg from '@assets/小麦.png'
+import sheepImg from '@assets/羊毛.png'
+import desertImg from '@assets/沙漠.png'
+
+// 引入头像（假设您有 1.png 到 4.png 四个头像）
+import avatar1 from '@assets/1.png'
+import avatar2 from '@assets/2.png'
+import avatar3 from '@assets/3.png'
+import avatar4 from '@assets/4.png'
+
+const AVATARS: Record<number, string> = {
+  1: avatar1, 2: avatar2, 3: avatar3, 4: avatar4
+}
+// 👆 新增结束 👆
+
 
 const RESOURCE_LABELS: Record<ResourceType, string> = {
   wood: '木材', brick: '砖块', ore: '矿石', wheat: '小麦', sheep: '羊毛',
@@ -177,7 +198,7 @@ export default function GamePage() {
     }
   }, [])
 
-    useEffect(() => {
+  useEffect(() => {
     const style = document.createElement('style')
     style.textContent = `
     @keyframes eventPulse {
@@ -449,15 +470,15 @@ export default function GamePage() {
       display: 'flex', flexDirection: 'column',
       height: '100vh', overflow: 'hidden',
       fontFamily: 'sans-serif',
-      // 👇 这里是修改的部分 👇
-      backgroundImage: "url('/海洋.png')",
+      // 👇 修改这里：使用模板字符串插入 import 进来的背景图 👇
+      backgroundImage: `url(${oceanBg})`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
-      // 👆 修改结束 👆
       color: '#fff',
       padding: 10, gap: 8, boxSizing: 'border-box',
     }}>
+
 
 
 
@@ -1500,12 +1521,12 @@ function HexagonTile({
   const patternId = `hex-pattern-${uid}`
 
   const terrainImage: Record<string, string> = {
-    wood: '/树林.png',
-    brick: '/砖块.png',
-    ore: '/石头.png',
-    wheat: '/小麦.png',
-    sheep: '/羊毛.png',
-    desert: '/沙漠.png',
+    wood: woodImg,
+    brick: brickImg,
+    ore: oreImg,
+    wheat: wheatImg,
+    sheep: sheepImg,
+    desert: desertImg,
   }
 
   const terrainColors: Record<string, string> = {
@@ -1560,12 +1581,13 @@ function HexagonTile({
       {/* 强盗 */}
       {hasRobber && (
         <image
-          href="/强盗.png"
-          x={x - 40}       /* 向左偏移一半宽度使其居中 */
-          y={y - 70}       /* 向上偏移，让它稳稳坐在数字圆圈上方 */
-          width="80"       /* 设置合适的宽度 */
-          height="80"      /* 设置合适的高度 */
-          style={{ pointerEvents: 'none' }} /* 防止图片遮挡地块的点击事件 */
+          // 👇 修改这里：使用 import 的强盗图片 👇
+          href={robberImg}
+          x={x - 40}
+          y={y - 70}
+          width="80"
+          height="80"
+          style={{ pointerEvents: 'none' }}
         />
       )}
 
@@ -2077,7 +2099,7 @@ function PlayerCard({
           boxShadow: `0 0 0 2px rgba(255,255,255,0.3)`,
         }}>
           <img
-            src={`/${avatarIndex}.png`}
+            src={AVATARS[avatarIndex] || AVATARS[1]}
             alt={player.name}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             onError={e => {
